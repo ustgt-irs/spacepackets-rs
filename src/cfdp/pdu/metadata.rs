@@ -50,7 +50,7 @@ pub fn build_metadata_opts_from_slice(
 ) -> Result<usize, ByteConversionError> {
     let mut written = 0;
     for tlv in tlvs {
-        written += tlv.write_to_bytes(&mut buf[written..])?;
+        written += tlv.write_to_slice(&mut buf[written..])?;
     }
     Ok(written)
 }
@@ -199,7 +199,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
     }
 
     /// Write [Self] to the provided buffer and returns the written size.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -209,7 +209,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
             .into());
         }
 
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        let mut current_idx = self.pdu_header.write_to_slice(buf)?;
         buf[current_idx] = FileDirectiveType::Metadata as u8;
         current_idx += 1;
         buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 6)
@@ -220,18 +220,22 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
             self.metadata_params.file_size,
             &mut buf[current_idx..],
         )?;
-        current_idx += self
-            .src_file_name
-            .write_to_be_bytes(&mut buf[current_idx..])?;
+        current_idx += self.src_file_name.write_to_slice(&mut buf[current_idx..])?;
         current_idx += self
             .dest_file_name
-            .write_to_be_bytes(&mut buf[current_idx..])?;
+            .write_to_slice(&mut buf[current_idx..])?;
         buf[current_idx..current_idx + self.options.len()].copy_from_slice(self.options);
         current_idx += self.options.len();
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     /// Length of the written PDU in bytes.
@@ -253,8 +257,8 @@ impl CfdpPdu for MetadataPduCreator<'_, '_, '_> {
 }
 
 impl WritablePduPacket for MetadataPduCreator<'_, '_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     fn len_written(&self) -> usize {
@@ -558,7 +562,7 @@ mod tests {
             &[],
         );
         let mut buf: [u8; 64] = [0; 64];
-        let res = metadata_pdu.write_to_bytes(&mut buf);
+        let res = metadata_pdu.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         check_metadata_raw_fields(
@@ -584,7 +588,7 @@ mod tests {
             &[],
         );
         let mut buf: [u8; 64] = [0; 64];
-        let res = metadata_pdu.write_to_bytes(&mut buf);
+        let res = metadata_pdu.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         check_metadata_raw_fields(
@@ -609,7 +613,7 @@ mod tests {
         );
         let mut buf: [u8; 64] = [0; 64];
         let pdu_vec = metadata_pdu.to_vec().unwrap();
-        let written = metadata_pdu.write_to_bytes(&mut buf).unwrap();
+        let written = metadata_pdu.write_to_slice(&mut buf).unwrap();
         assert_eq!(buf[0..written], pdu_vec);
     }
 
@@ -633,7 +637,7 @@ mod tests {
             &[],
         );
         let mut buf: [u8; 64] = [0; 64];
-        metadata_pdu.write_to_bytes(&mut buf).unwrap();
+        metadata_pdu.write_to_slice(&mut buf).unwrap();
         let pdu_read_back = MetadataPduReader::from_bytes(&buf);
         assert!(pdu_read_back.is_ok());
         let pdu_read_back = pdu_read_back.unwrap();
@@ -651,7 +655,7 @@ mod tests {
         );
         assert_eq!(metadata_pdu.crc_flag(), CrcFlag::WithCrc);
         let mut buf: [u8; 64] = [0; 64];
-        let write_res = metadata_pdu.write_to_bytes(&mut buf);
+        let write_res = metadata_pdu.write_to_slice(&mut buf);
         assert!(write_res.is_ok());
         let written = write_res.unwrap();
         assert_eq!(
@@ -679,7 +683,7 @@ mod tests {
             &[],
         );
         let mut buf: [u8; 64] = [0; 64];
-        let write_res = metadata_pdu.write_to_bytes(&mut buf);
+        let write_res = metadata_pdu.write_to_slice(&mut buf);
         assert!(write_res.is_ok());
         let written = write_res.unwrap();
         assert_eq!(
@@ -744,7 +748,7 @@ mod tests {
             &tlv_buf[0..opts_len],
         );
         let mut buf: [u8; 128] = [0; 128];
-        let write_res = metadata_pdu.write_to_bytes(&mut buf);
+        let write_res = metadata_pdu.write_to_slice(&mut buf);
         assert!(write_res.is_ok());
         let written = write_res.unwrap();
         assert_eq!(
@@ -788,7 +792,7 @@ mod tests {
             &all_tlvs,
         );
         let mut buf: [u8; 128] = [0; 128];
-        let write_res = metadata_pdu.write_to_bytes(&mut buf);
+        let write_res = metadata_pdu.write_to_slice(&mut buf);
         assert!(write_res.is_ok());
         let written = write_res.unwrap();
         assert_eq!(

@@ -186,13 +186,19 @@ pub trait TimeWriter {
 
     /// Generic function to convert write a timestamp into a raw buffer.
     /// Returns the number of written bytes on success.
-    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError>;
+    fn write_to_slice(&self, bytes: &mut [u8]) -> Result<usize, TimestampError>;
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError> {
+        self.write_to_slice(bytes)
+    }
 
     /// Convert to a owned [alloc::vec::Vec].
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, TimestampError> {
         let mut vec = alloc::vec![0; self.len_written()];
-        self.write_to_bytes(&mut vec)?;
+        self.write_to_slice(&mut vec)?;
         Ok(vec)
     }
 }

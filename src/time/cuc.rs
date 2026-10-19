@@ -244,7 +244,7 @@ impl FractionalPart {
 ///     .expect("creating cuc stamp failed");
 /// let mut raw_stamp = [0; 16];
 /// {
-///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).expect("writing timestamp failed");
+///     let written = timestamp_now.write_to_slice(&mut raw_stamp).expect("writing timestamp failed");
 ///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCode::CucCcsdsEpoch as u8);
 ///     // 1 byte preamble + 4 byte counter + 3 byte fractional part
 ///     assert_eq!(written, 8);
@@ -729,7 +729,7 @@ impl TimeReader for CucTime {
 }
 
 impl TimeWriter for CucTime {
-    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError> {
+    fn write_to_slice(&self, bytes: &mut [u8]) -> Result<usize, TimestampError> {
         // Cross check the sizes of the counters against byte widths in the ctor
         if bytes.len() < self.len_as_bytes() {
             return Err(TimestampError::ByteConversion(
@@ -926,7 +926,7 @@ mod tests {
             CucTime::new_generic(WidthCounterPair(4, 0x20102030), FractionalPart::new_empty());
         assert!(zero_cuc.is_ok());
         let zero_cuc = zero_cuc.unwrap();
-        let res = zero_cuc.write_to_bytes(&mut buf);
+        let res = zero_cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         assert_eq!(zero_cuc.subsec_nanos(), 0);
         assert_eq!(zero_cuc.len_as_bytes(), 5);
@@ -971,7 +971,7 @@ mod tests {
             FractionalPart::new_with_seconds_resolution(),
         )
         .unwrap();
-        zero_cuc.write_to_bytes(&mut buf).unwrap();
+        zero_cuc.write_to_slice(&mut buf).unwrap();
         let cuc_read_back = CucTime::from_bytes(&buf).expect("reading cuc timestamp failed");
         assert_eq!(cuc_read_back, zero_cuc);
         assert_eq!(cuc_read_back.width_counter_pair().1, 0x20102030);
@@ -995,7 +995,7 @@ mod tests {
             }
         }
         let large_stamp = CucTime::new_with_fine_fractions(22, 300).unwrap();
-        large_stamp.write_to_bytes(&mut buf).unwrap();
+        large_stamp.write_to_slice(&mut buf).unwrap();
         for i in 2..large_stamp.len_as_bytes() - 1 {
             let res = CucTime::from_bytes(&buf[0..i]);
             assert!(res.is_err());
@@ -1018,7 +1018,7 @@ mod tests {
         assert!(cuc.is_ok());
         let cuc = cuc.unwrap();
         assert_eq!(cuc.len_as_bytes(), 2);
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 2);
@@ -1036,7 +1036,7 @@ mod tests {
         assert!(cuc.is_ok());
         let cuc = cuc.unwrap();
         assert_eq!(cuc.len_as_bytes(), 3);
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 3);
@@ -1060,7 +1060,7 @@ mod tests {
         assert!(cuc.is_ok());
         let cuc = cuc.unwrap();
         assert_eq!(cuc.len_as_bytes(), 4);
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 4);
@@ -1079,7 +1079,7 @@ mod tests {
         let res = CucTime::new_with_fine_fractions(0, 0);
         let cuc = res.unwrap();
         for i in 0..cuc.len_as_bytes() - 1 {
-            let err = cuc.write_to_bytes(&mut buf[0..i]);
+            let err = cuc.write_to_slice(&mut buf[0..i]);
             assert!(err.is_err());
             let err = err.unwrap_err();
             if let TimestampError::ByteConversion(ByteConversionError::ToSliceTooSmall {
@@ -1115,7 +1115,7 @@ mod tests {
         let cuc = CucTime::new_with_coarse_fractions(0x30201060, 120);
         assert_eq!(cuc.fractions().counter(), 120);
         assert_eq!(cuc.fractions().resolution(), FractionalResolution::FourMs);
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 6);
@@ -1131,7 +1131,7 @@ mod tests {
     fn test_read_with_coarse_fractions() {
         let mut buf: [u8; 16] = [0; 16];
         let cuc = CucTime::new_with_coarse_fractions(0x30201060, 120);
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let res = CucTime::from_bytes(&buf);
         assert!(res.is_ok());
@@ -1143,7 +1143,7 @@ mod tests {
     fn test_write_with_medium_fractions() {
         let mut buf: [u8; 16] = [0; 16];
         let cuc = CucTime::new_with_medium_fractions(0x30303030, 30000);
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 7);
@@ -1155,7 +1155,7 @@ mod tests {
     fn test_read_with_medium_fractions() {
         let mut buf: [u8; 16] = [0; 16];
         let cuc = CucTime::new_with_medium_fractions(0x30303030, 30000);
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let res = CucTime::from_bytes(&buf);
         assert!(res.is_ok());
@@ -1169,7 +1169,7 @@ mod tests {
         let cuc = CucTime::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
         assert!(cuc.is_ok());
         let cuc = cuc.unwrap();
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         let written = res.unwrap();
         assert_eq!(written, 8);
         let mut dummy_buf: [u8; 4] = [0; 4];
@@ -1184,7 +1184,7 @@ mod tests {
         let cuc = CucTime::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
         assert!(cuc.is_ok());
         let cuc = cuc.unwrap();
-        let res = cuc.write_to_bytes(&mut buf);
+        let res = cuc.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let res = CucTime::from_bytes(&buf);
         assert!(res.is_ok());
@@ -1466,7 +1466,7 @@ mod tests {
         let stamp = CucTime::new(100);
         let stamp_vec = stamp.to_vec().unwrap();
         let mut buf: [u8; 16] = [0; 16];
-        stamp.write_to_bytes(&mut buf).unwrap();
+        stamp.write_to_slice(&mut buf).unwrap();
         assert_eq!(stamp_vec, buf[..stamp.len_written()]);
     }
 }

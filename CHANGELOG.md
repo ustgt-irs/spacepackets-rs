@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - `Lv::value` now returns a slice with the lifetime of the underlying data instead of the
   lifetime of the `Lv` itself.
+- Renamed `write_to_bytes` to `write_to_slice` across the crate. This includes the
+  `write_to_bytes_no_crc`, `write_to_bytes_crc_no_table`, `write_to_bytes_no_checksum`,
+  `write_to_bytes_checksum_no_table` and `write_to_bytes_partially` variants, as well as
+  `Lv::write_to_be_bytes` and `write_to_be_bytes` of the PUS A secondary headers.
+  The old names are still available as deprecated aliases.
+  `UnsignedEnum::write_to_be_bytes` and `SpHeader::write_to_be_bytes` keep their names.
+- `WritableTlv`, `WritablePduPacket`, `TimeWriter` and `WritablePusPacket` now require
+  `write_to_slice` (or `write_to_slice_no_checksum`) instead of `write_to_bytes`.
+  External implementors of these traits need to rename their implementation.
+  Overrides of the provided `WritablePusPacket::write_to_bytes` and
+  `WritablePusPacket::write_to_bytes_checksum_no_table` methods must be moved to
+  `write_to_slice` and `write_to_slice_checksum_no_table`, otherwise they are silently ignored.
 
 ## Added
 
@@ -23,7 +35,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `InvalidReservedMessageTypeError`, `ReservedMessageCreationError` and
   `ReservedMessageReadError` error types.
 - `TryFrom<&str>` implementation for `Lv`.
-- Inherent `Tlv::write_to_bytes` and `Tlv::len_written` methods, so the `WritableTlv` trait does
+- Inherent `Tlv::write_to_slice` and `Tlv::len_written` methods, so the `WritableTlv` trait does
   not need to be imported.
 
 ## Fixed

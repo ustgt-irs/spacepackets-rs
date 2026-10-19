@@ -237,7 +237,7 @@ impl PrimaryHeader {
     }
 
     /// Write primary header to bytes.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_header() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -261,11 +261,17 @@ impl PrimaryHeader {
         Ok(self.len_header())
     }
 
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
+
     /// Write [self] to a newly allocated [alloc::vec::Vec] and return it.
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
         let mut vec = alloc::vec![0; self.len_header()];
-        self.write_to_bytes(&mut vec).unwrap();
+        self.write_to_slice(&mut vec).unwrap();
         vec
     }
 
@@ -478,7 +484,7 @@ impl TransferFrameDataFieldHeader {
     }
 
     /// Write [self] to the provided byte buffer.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         let full_len = self.len_header();
         if buf.len() < full_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -491,6 +497,12 @@ impl TransferFrameDataFieldHeader {
             buf[1..3].copy_from_slice(&fhp_or_lvo.to_be_bytes());
         }
         Ok(full_len)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 }
 
@@ -544,7 +556,7 @@ impl<'data> TransferFrameCreator<'data> {
     }
 
     /// Write [self] to the provided byte buffer.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         let full_len = self.len_written();
         if full_len > buf.len() {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -553,11 +565,11 @@ impl<'data> TransferFrameCreator<'data> {
             });
         }
         let mut current_index = 0;
-        current_index += self.primary_header.write_to_bytes(buf)?;
+        current_index += self.primary_header.write_to_slice(buf)?;
 
         current_index += self
             .data_field_header
-            .write_to_bytes(&mut buf[self.primary_header.len_header()..])?;
+            .write_to_slice(&mut buf[self.primary_header.len_header()..])?;
         buf[current_index..current_index + self.data.len()].copy_from_slice(self.data);
         current_index += self.data.len();
 
@@ -575,11 +587,17 @@ impl<'data> TransferFrameCreator<'data> {
         Ok(current_index)
     }
 
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
+
     /// Write [self] to a newly allocated [alloc::vec::Vec] and return it.
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
         let mut vec = alloc::vec![0; self.len_written()];
-        self.write_to_bytes(&mut vec).unwrap();
+        self.write_to_slice(&mut vec).unwrap();
         vec
     }
 }
@@ -628,10 +646,10 @@ impl<'data> TransferFrameCreatorWithReservedData<'data> {
             });
         }
         let mut current_index = 0;
-        current_index += primary_header.write_to_bytes(buf)?;
+        current_index += primary_header.write_to_slice(buf)?;
 
         current_index +=
-            data_field_header.write_to_bytes(&mut buf[primary_header.len_header()..])?;
+            data_field_header.write_to_slice(&mut buf[primary_header.len_header()..])?;
         let data_index = current_index;
         //buf[current_index..current_index + self.data.len()].copy_from_slice(self.data);
         current_index += data_size;
@@ -836,7 +854,7 @@ mod tests {
             0x2345,
         );
         // Virtual channel count 0.
-        assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 7);
+        assert_eq!(primary_header.write_to_slice(&mut buf).unwrap(), 7);
         common_basic_check(&buf);
         assert_eq!(primary_header.vc_frame_count_len().value(), 0);
         assert_eq!(primary_header.vc_frame_count(), 0);
@@ -876,7 +894,7 @@ mod tests {
             .set_vc_frame_count(u3::new(4), 0x12345678)
             .unwrap();
         // Virtual channel count 4.
-        assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 11);
+        assert_eq!(primary_header.write_to_slice(&mut buf).unwrap(), 11);
         assert_eq!(primary_header.vc_frame_count_len().value(), 4);
         assert_eq!(primary_header.vc_frame_count(), 0x12345678);
         common_basic_check(&buf);
@@ -915,7 +933,7 @@ mod tests {
         primary_header.set_vc_frame_count(u3::new(2), 5).unwrap();
         assert_eq!(primary_header.vc_frame_count_len().value(), 2);
         assert_eq!(primary_header.vc_frame_count(), 5);
-        assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 9);
+        assert_eq!(primary_header.write_to_slice(&mut buf).unwrap(), 9);
         assert_eq!(buf[6] & 0b111, 2);
         assert_eq!(u16::from_be_bytes(buf[7..9].try_into().unwrap()), 5);
 
@@ -939,7 +957,7 @@ mod tests {
         primary_header.set_vc_frame_count(u3::new(1), 255).unwrap();
         assert_eq!(primary_header.vc_frame_count_len().value(), 1);
         assert_eq!(primary_header.vc_frame_count(), 255);
-        assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 8);
+        assert_eq!(primary_header.write_to_slice(&mut buf).unwrap(), 8);
         assert_eq!(buf[6] & 0b111, 1);
         assert_eq!(buf[7], 255);
 
@@ -958,7 +976,7 @@ mod tests {
             u4::new(0b1010),
             0x2345,
         );
-        assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 7);
+        assert_eq!(primary_header.write_to_slice(&mut buf).unwrap(), 7);
         let parsed_header = PrimaryHeader::from_bytes(&buf).unwrap();
         assert_eq!(parsed_header, primary_header);
     }
@@ -980,7 +998,7 @@ mod tests {
         primary_header
             .set_vc_frame_count(u3::new(4), 0x12345678)
             .unwrap();
-        assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 11);
+        assert_eq!(primary_header.write_to_slice(&mut buf).unwrap(), 11);
         let parsed_header = PrimaryHeader::from_bytes(&buf).unwrap();
         assert_eq!(parsed_header, primary_header);
     }
@@ -1027,7 +1045,7 @@ mod tests {
         buf[header_len + 1] = 0x42;
         // 1 byte TFDH, 1 byte data, 2 bytes CRC.
         primary_header.set_frame_len(header_len + 4);
-        primary_header.write_to_bytes(&mut buf).unwrap();
+        primary_header.write_to_slice(&mut buf).unwrap();
         // Calculate and write CRC16.
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&buf[0..header_len + 2]);
@@ -1067,7 +1085,7 @@ mod tests {
         buf[header_len + 1] = 0x42;
         // 1 byte TFDH, 1 byte data, 2 bytes CRC.
         primary_header.set_frame_len(header_len + 4);
-        primary_header.write_to_bytes(&mut buf).unwrap();
+        primary_header.write_to_slice(&mut buf).unwrap();
         // Now parse the frame without having calculated the checksum.
         match TransferFrameReader::from_bytes(&buf, true) {
             Ok(_) => panic!("transfer frame read call did not fail"),
@@ -1094,7 +1112,7 @@ mod tests {
         buf[header_len + 1] = 0x42;
         // 1 byte TFDH, 1 byte data, 2 bytes CRC.
         primary_header.set_frame_len(header_len + 4);
-        primary_header.write_to_bytes(&mut buf).unwrap();
+        primary_header.write_to_slice(&mut buf).unwrap();
         // Now parse the frame.
         let error = TransferFrameReader::from_bytes(&buf[0..7], true).unwrap_err();
         assert_eq!(
@@ -1143,7 +1161,7 @@ mod tests {
             u4::new(0b1010),
             0,
         );
-        primary_header.write_to_bytes(&mut buf).unwrap();
+        primary_header.write_to_slice(&mut buf).unwrap();
         // Set truncated header flag manually.
         buf[3] |= 0b1;
         assert_eq!(
@@ -1167,7 +1185,7 @@ mod tests {
         primary_header
             .set_vc_frame_count(u3::new(4), 0x12345678)
             .unwrap();
-        primary_header.write_to_bytes(&mut buf).unwrap();
+        primary_header.write_to_slice(&mut buf).unwrap();
 
         assert_eq!(
             PrimaryHeader::from_bytes(&buf[0..8]).unwrap_err(),
@@ -1188,7 +1206,7 @@ mod tests {
             u4::new(0b1010),
             0,
         );
-        primary_header.write_to_bytes(&mut buf).unwrap();
+        primary_header.write_to_slice(&mut buf).unwrap();
         buf[0] &= 0b00001111;
         assert_eq!(
             PrimaryHeader::from_bytes(&buf).unwrap_err(),
@@ -1206,7 +1224,7 @@ mod tests {
             0x2345,
         );
         if let Err(ByteConversionError::ToSliceTooSmall { found, expected }) =
-            primary_header.write_to_bytes(&mut [0; 4])
+            primary_header.write_to_slice(&mut [0; 4])
         {
             assert_eq!(found, 4);
             assert_eq!(expected, 7);
@@ -1288,7 +1306,7 @@ mod tests {
             TransferFrameCreator::new(primary_header, data_field_header, &data, None, true);
         let mut buf: [u8; 64] = [0; 64];
         assert_eq!(frame_creator.len_written(), 14);
-        let written = frame_creator.write_to_bytes(&mut buf).unwrap();
+        let written = frame_creator.write_to_slice(&mut buf).unwrap();
         assert_eq!(written, 14);
         assert_eq!(written, frame_creator.len_written());
         let reader = TransferFrameReader::from_bytes(&buf, true).unwrap();
@@ -1319,7 +1337,7 @@ mod tests {
             TransferFrameCreator::new(primary_header, data_field_header, &data, None, false);
         let mut buf: [u8; 64] = [0; 64];
         assert_eq!(frame_creator.len_written(), 12);
-        let written = frame_creator.write_to_bytes(&mut buf).unwrap();
+        let written = frame_creator.write_to_slice(&mut buf).unwrap();
         assert_eq!(written, 12);
         assert_eq!(written, frame_creator.len_written());
         let reader = TransferFrameReader::from_bytes(&buf, false).unwrap();
@@ -1383,7 +1401,7 @@ mod tests {
             TransferFrameCreator::new(primary_header, data_field_header, &data, Some(4), true);
         let mut buf: [u8; 64] = [0; 64];
         assert_eq!(frame_creator.len_written(), 18);
-        let written = frame_creator.write_to_bytes(&mut buf).unwrap();
+        let written = frame_creator.write_to_slice(&mut buf).unwrap();
         assert_eq!(written, 18);
         assert_eq!(written, frame_creator.len_written());
         let reader = TransferFrameReader::from_bytes(&buf, true).unwrap();

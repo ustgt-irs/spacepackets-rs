@@ -121,7 +121,13 @@ pub trait WritablePduPacket {
     fn len_written(&self) -> usize;
 
     /// Write the PDU to a raw buffer, returning the written length.
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError>;
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError>;
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
+    }
 
     /// Convert the PDU to an owned vector of bytes.
     #[cfg(feature = "alloc")]
@@ -130,7 +136,7 @@ pub trait WritablePduPacket {
         // [this issue](https://github.com/rust-lang/rust-clippy/issues/4483) for caveats of more
         // "efficient" implementations.
         let mut vec = alloc::vec![0; self.len_written()];
-        self.write_to_bytes(&mut vec)?;
+        self.write_to_slice(&mut vec)?;
         Ok(vec)
     }
 }
@@ -465,7 +471,7 @@ impl PduHeader {
     }
 
     /// Write the header to a raw buffer, returning the written length on success.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         // The API does not allow passing entity IDs with different sizes, so this should
         // never happen.
         assert_eq!(
@@ -511,6 +517,12 @@ impl PduHeader {
         )?;
         current_idx += self.pdu_conf.dest_entity_id.size();
         Ok(current_idx)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     /// This function first verifies that the buffer can hold the full length of the PDU parsed from
@@ -884,7 +896,7 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok());
         // 4 byte fixed header plus three bytes src, dest ID and transaction ID
         assert_eq!(res.unwrap(), 7);
@@ -901,7 +913,7 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let deser_res = PduHeader::from_bytes(&buf);
         assert!(deser_res.is_ok());
@@ -930,7 +942,7 @@ mod tests {
         );
         assert_eq!(pdu_header.header_len(), 10);
         let mut buf: [u8; 16] = [0; 16];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok(), "{}", format!("Result {res:?} not okay"));
         // 4 byte fixed header, 6 bytes additional fields
         assert_eq!(res.unwrap(), 10);
@@ -956,7 +968,7 @@ mod tests {
             SegmentationControl::WithRecordBoundaryPreservation,
         );
         let mut buf: [u8; 16] = [0; 16];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let deser_res = PduHeader::from_bytes(&buf);
         assert!(deser_res.is_ok());
@@ -974,7 +986,7 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok());
         buf[0] &= !0b1110_0000;
         buf[0] |= (CFDP_VERSION_2 + 1) << 5;
@@ -1019,7 +1031,7 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let header = PduHeader::from_bytes(&buf[0..6]);
         assert!(header.is_err());
@@ -1102,7 +1114,7 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok());
         buf[3] &= !0b0111_0000;
         // Equivalent to the length of three
@@ -1126,7 +1138,7 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_bytes(&mut buf);
+        let res = pdu_header.write_to_slice(&mut buf);
         assert!(res.is_ok());
         buf[3] &= !0b0000_0111;
         // Equivalent to the length of three

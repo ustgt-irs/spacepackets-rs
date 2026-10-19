@@ -146,9 +146,15 @@ impl<'data> Lv<'data> {
 
     /// Writes the LV to a raw buffer. Please note that the first byte will contain the length
     /// of the value, but the values may not exceed a length of [u8::MAX].
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         generic_len_check_data_serialization(buf, self.len_value(), MIN_LV_LEN)?;
-        Ok(self.write_to_be_bytes_no_len_check(buf))
+        Ok(self.write_to_slice_no_len_check(buf))
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     /// Reads a LV  from a raw buffer.
@@ -158,7 +164,7 @@ impl<'data> Lv<'data> {
         Self::from_be_bytes_no_len_check(buf)
     }
 
-    pub(crate) fn write_to_be_bytes_no_len_check(&self, buf: &mut [u8]) -> usize {
+    pub(crate) fn write_to_slice_no_len_check(&self, buf: &mut [u8]) -> usize {
         if self.is_empty() {
             buf[0] = 0;
             return MIN_LV_LEN;
@@ -226,7 +232,7 @@ mod tests {
         assert_eq!(lv_empty.len_full(), 1);
         assert!(lv_empty.is_empty());
         let mut buf: [u8; 4] = [0xff; 4];
-        let res = lv_empty.write_to_be_bytes(&mut buf);
+        let res = lv_empty.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 1);
@@ -240,7 +246,7 @@ mod tests {
         assert!(lv_res.is_ok());
         let lv = lv_res.unwrap();
         let mut buf: [u8; 16] = [0; 16];
-        let res = lv.write_to_be_bytes(&mut buf);
+        let res = lv.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 5);
@@ -301,7 +307,7 @@ mod tests {
         let mut buf: [u8; 3] = [0; 3];
         let lv_data: [u8; 4] = [1, 2, 3, 4];
         let lv = Lv::new(&lv_data).unwrap();
-        let res = lv.write_to_be_bytes(&mut buf);
+        let res = lv.write_to_slice(&mut buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
         if let ByteConversionError::ToSliceTooSmall { found, expected } = error {
@@ -329,7 +335,7 @@ mod tests {
 
     fn verify_test_str_lv(lv: Lv) {
         let mut buf: [u8; 16] = [0; 16];
-        let res = lv.write_to_be_bytes(&mut buf);
+        let res = lv.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let res = res.unwrap();
         assert_eq!(res, 8 + 1);
