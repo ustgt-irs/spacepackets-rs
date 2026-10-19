@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   higher-level libraries
 - `MsgToUserTlv::reserved_cfdp_msg_type` returns the message type of reserved CFDP messages.
 - `ReservedMessageType` enumeration for reserved CFDP messages.
+- `ProxyTransmissionModeMessage`, `ProxyClosureRequestMessage` and `ProxyPutCancelMessage`
+  reserved CFDP messages.
+- `OriginatingTransactionIdMessage` reserved CFDP message.
 - `InvalidReservedMessageTypeError`, `ReservedMessageCreationError` and
   `ReservedMessageReadError` error types.
 - `TryFrom<&str>` implementation for `Lv`.
