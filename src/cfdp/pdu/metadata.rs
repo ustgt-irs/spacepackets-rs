@@ -7,7 +7,9 @@ use crate::cfdp::pdu::{
     FileDirectiveType, PduError, PduHeader, add_pdu_crc, generic_length_checks_pdu_deserialization,
     read_fss_field, write_fss_field,
 };
-use crate::cfdp::tlv::{Tlv, WritableTlv};
+use crate::cfdp::tlv::Tlv;
+#[cfg(feature = "alloc")]
+use crate::cfdp::tlv::WritableTlv;
 use crate::cfdp::{ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;

@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- `Lv::value` now returns a slice with the lifetime of the underlying data instead of the
+  lifetime of the `Lv` itself.
+
+## Added
+
+- Added `ProxyPutRequestMessageCreator`, `ProxyPutRequestMessageReader` and
+  `ProxyPutResponseMessage` helpers to support CFDP proxy put requests and responses by
+  higher-level libraries
+- `MsgToUserTlv::reserved_cfdp_msg_type` returns the message type of reserved CFDP messages.
+- `ReservedMessageType` enumeration for reserved CFDP messages.
+- `InvalidReservedMessageTypeError`, `ReservedMessageCreationError` and
+  `ReservedMessageReadError` error types.
+- `TryFrom<&str>` implementation for `Lv`.
+- Inherent `Tlv::write_to_bytes` and `Tlv::len_written` methods, so the `WritableTlv` trait does
+  not need to be imported.
+
 ## Fixed
 
 - Fixed an off-by-one error in the CUC counter rollover modulus which caused the counter to skip
