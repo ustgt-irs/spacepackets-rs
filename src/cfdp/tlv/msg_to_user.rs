@@ -4,9 +4,15 @@ use super::TlvOwned;
 use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::{
     ByteConversionError,
-    cfdp::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError},
+    cfdp::{
+        ConditionCode, InvalidTlvTypeFieldError, TlvLvDataTooLargeError,
+        lv::Lv,
+        pdu::finished::{DeliveryCode, FileStatus, pack_status_byte, unpack_status_byte},
+    },
+    util::{UnsignedByteField, UnsignedByteFieldError, UnsignedEnum},
 };
 use delegate::delegate;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 /// Message To User TLV structure.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -16,6 +22,11 @@ pub struct MsgToUserTlv<'data> {
 }
 
 impl<'data> MsgToUserTlv<'data> {
+    /// Every reserved CFDP message value starts with this ID.
+    pub const RESERVED_MESSAGE_ID: &'static [u8; 4] = b"cfdp";
+    /// Length of [Self::RESERVED_MESSAGE_ID].
+    pub const RESERVED_MESSAGE_ID_LEN: usize = Self::RESERVED_MESSAGE_ID.len();
+
     /// Create a new message to user TLV where the type field is set correctly.
     pub fn new(value: &'data [u8]) -> Result<MsgToUserTlv<'data>, TlvLvDataTooLargeError> {
         Ok(Self {
@@ -53,16 +64,50 @@ impl<'data> MsgToUserTlv<'data> {
         TlvType::MsgToUser
     }
 
-    /// Check whether this message is a reserved CFDP message like a Proxy Operation Message.
+    /// Full TLV length of a reserved CFDP message.
+    ///
+    /// The payload length is the length of the message parameters following the message type.
+    pub fn full_len_for_reserved_cfdp_message(payload_len: usize) -> usize {
+        // 1 byte for the reserved message type.
+        Tlv::MIN_LEN + Self::RESERVED_MESSAGE_ID_LEN + 1 + payload_len
+    }
+
+    /// Checks whether a reserved CFDP message with the given payload length still fits into
+    /// the TLV value field.
+    ///
+    /// The payload length is the length of the message parameters following the message type.
+    pub fn check_reserved_message_payload_len(
+        payload_len: usize,
+    ) -> Result<(), TlvLvDataTooLargeError> {
+        // 1 byte for the reserved message type.
+        let full_payload_len = Self::RESERVED_MESSAGE_ID_LEN + 1 + payload_len;
+        if full_payload_len > u8::MAX as usize {
+            return Err(TlvLvDataTooLargeError(full_payload_len));
+        }
+        Ok(())
+    }
+
+    /// Checks whether this message is a reserved CFDP message like a Proxy Operation Message.
     pub fn is_reserved_cfdp_msg(&self) -> bool {
-        if self.value().len() < 4 {
-            return false;
-        }
+        self.reserved_cfdp_msg_type().is_some()
+    }
+
+    /// Returns the message type if this is a reserved CFDP message like a Proxy Operation
+    /// Message.
+    ///
+    /// Returns [None] if the value does not start with the reserved message ID, and an error
+    /// if it does but the message type is missing or unknown.
+    pub fn reserved_cfdp_msg_type(
+        &self,
+    ) -> Option<Result<ReservedMessageType, InvalidReservedMessageTypeError>> {
         let value = self.value();
-        if value[0] == b'c' && value[1] == b'f' && value[2] == b'd' && value[3] == b'p' {
-            return true;
+        if !value.starts_with(Self::RESERVED_MESSAGE_ID) {
+            return None;
         }
-        false
+        Some(match value.get(Self::RESERVED_MESSAGE_ID_LEN) {
+            Some(raw_type) => ReservedMessageType::try_from(*raw_type),
+            None => Err(InvalidReservedMessageTypeError::Missing),
+        })
     }
 
     /// This is a thin wrapper around [Tlv::from_bytes] with the additional type check.
@@ -140,6 +185,420 @@ impl GenericTlv for MsgToUserTlv<'_> {
     }
 }
 
+/// Message types of the reserved CFDP messages.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[num_enum(error_type(
+    name = InvalidReservedMessageTypeError,
+    constructor = InvalidReservedMessageTypeError::Unknown
+))]
+#[repr(u8)]
+pub enum ReservedMessageType {
+    /// Proxy put request.
+    ProxyPutRequest = 0x00,
+    /// Proxy message to user.
+    ProxyMessageToUser = 0x01,
+    /// Proxy filestore request.
+    ProxyFilestoreRequest = 0x02,
+    /// Proxy fault handler override.
+    ProxyFaultHandlerOverride = 0x03,
+    /// Proxy transmission mode.
+    ProxyTransmissionMode = 0x04,
+    /// Proxy flow label.
+    ProxyFlowLabel = 0x05,
+    /// Proxy segmentation control.
+    ProxySegmentationControl = 0x06,
+    /// Proxy put response.
+    ProxyPutResponse = 0x07,
+    /// Proxy filestore response.
+    ProxyFilestoreResponse = 0x08,
+    /// Proxy put cancel.
+    ProxyPutCancel = 0x09,
+    /// Originating transaction ID.
+    OriginatingTransactionId = 0x0A,
+    /// Proxy closure request.
+    ProxyClosureRequest = 0x0B,
+    /// Directory listing request.
+    DirectoryListingRequest = 0x10,
+    /// Directory listing response.
+    DirectoryListingResponse = 0x11,
+    /// Remote status report request.
+    RemoteStatusReportRequest = 0x20,
+    /// Remote status report response.
+    RemoteStatusReportResponse = 0x21,
+    /// Remote suspend request.
+    RemoteSuspendRequest = 0x30,
+    /// Remote suspend response.
+    RemoteSuspendResponse = 0x31,
+    /// Remote resume request.
+    RemoteResumeRequest = 0x38,
+    /// Remote resume response.
+    RemoteResumeResponse = 0x39,
+}
+
+impl ReservedMessageType {
+    /// Is this a proxy operation message type?
+    pub fn is_proxy(&self) -> bool {
+        // The originating transaction ID is not a proxy message, but sits in the proxy range.
+        matches!(*self as u8, 0x00..=0x09 | 0x0B)
+    }
+}
+
+/// Invalid message type field of a reserved CFDP message.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum InvalidReservedMessageTypeError {
+    /// The value only contains the reserved message ID.
+    #[error("reserved message type is missing")]
+    Missing,
+    /// Unknown raw message type.
+    #[error("unknown reserved message type {0}")]
+    Unknown(u8),
+}
+
+/// Errors when creating a reserved CFDP message.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum ReservedMessageCreationError {
+    /// Message does not fit into the TLV value field.
+    #[error("{0}")]
+    DataTooLarge(#[from] TlvLvDataTooLargeError),
+    /// Invalid entity ID.
+    #[error("invalid entity ID: {0}")]
+    InvalidEntityId(#[from] UnsignedByteFieldError),
+}
+
+/// Entity IDs must be 1, 2, 4 or 8 bytes wide.
+fn check_entity_id_width(width: usize) -> Result<(), UnsignedByteFieldError> {
+    if !matches!(width, 1 | 2 | 4 | 8) {
+        return Err(UnsignedByteFieldError::InvalidWidth {
+            found: width,
+            expected: None,
+        });
+    }
+    Ok(())
+}
+
+/// Errors when reading a specific reserved CFDP message.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum ReservedMessageReadError {
+    /// Message to user TLV is not a reserved CFDP message.
+    #[error("not a reserved CFDP message")]
+    NotReservedMessage,
+    /// Invalid message type field.
+    #[error("{0}")]
+    InvalidMessageType(#[from] InvalidReservedMessageTypeError),
+    /// Valid message type, but not the one expected by the reader.
+    #[error("unexpected reserved message type {found:?}, expected {expected:?}")]
+    UnexpectedMessageType {
+        /// Found message type.
+        found: ReservedMessageType,
+        /// Expected message type.
+        expected: ReservedMessageType,
+    },
+    /// Generic TLV or LV error.
+    #[error("{0}")]
+    TlvLv(#[from] TlvLvError),
+    /// Byte conversion error.
+    #[error("byte conversion error: {0}")]
+    ByteConversion(#[from] ByteConversionError),
+    /// Invalid entity ID.
+    #[error("invalid entity ID: {0}")]
+    InvalidEntityId(#[from] UnsignedByteFieldError),
+    /// Invalid condition code.
+    #[error("invalid condition code {0}")]
+    InvalidConditionCode(u8),
+}
+
+impl<'data> MsgToUserTlv<'data> {
+    /// Checks the reserved message type and returns the message parameters following it.
+    fn reserved_msg_params(
+        &self,
+        expected: ReservedMessageType,
+    ) -> Result<&'data [u8], ReservedMessageReadError> {
+        let msg_type = self
+            .reserved_cfdp_msg_type()
+            .ok_or(ReservedMessageReadError::NotReservedMessage)??;
+        if msg_type != expected {
+            return Err(ReservedMessageReadError::UnexpectedMessageType {
+                found: msg_type,
+                expected,
+            });
+        }
+        // Go through the inner LV so the parameters borrow from the original buffer.
+        Ok(&self.tlv.lv.value()[Self::RESERVED_MESSAGE_ID_LEN + 1..])
+    }
+}
+
+/// Writes the TLV header, the reserved message ID and the message type.
+///
+/// The payload length must have been checked with
+/// [MsgToUserTlv::check_reserved_message_payload_len]. Returns the number of bytes written.
+fn write_reserved_msg_header(
+    buf: &mut [u8],
+    msg_type: ReservedMessageType,
+    payload_len: usize,
+) -> Result<usize, ByteConversionError> {
+    let full_len = MsgToUserTlv::full_len_for_reserved_cfdp_message(payload_len);
+    if full_len > buf.len() {
+        return Err(ByteConversionError::ToSliceTooSmall {
+            found: buf.len(),
+            expected: full_len,
+        });
+    }
+    buf[0] = TlvType::MsgToUser as u8;
+    buf[1] = (full_len - Tlv::MIN_LEN) as u8;
+    buf[2..6].copy_from_slice(MsgToUserTlv::RESERVED_MESSAGE_ID);
+    buf[6] = msg_type as u8;
+    Ok(Tlv::MIN_LEN + MsgToUserTlv::RESERVED_MESSAGE_ID_LEN + 1)
+}
+
+/// Constructor for a proxy put request message.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
+    destination_entity_id: UnsignedByteField,
+    source_file_name: Lv<'src_lv>,
+    dest_file_name: Lv<'dest_lv>,
+}
+
+impl<'src_lv, 'dest_lv> ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
+    /// Constructor for the proxy put message creator.
+    pub fn new(
+        destination_entity_id: UnsignedByteField,
+        source_file_name: Lv<'src_lv>,
+        dest_file_name: Lv<'dest_lv>,
+    ) -> Result<Self, ReservedMessageCreationError> {
+        check_entity_id_width(destination_entity_id.size())?;
+        MsgToUserTlv::check_reserved_message_payload_len(Self::payload_len(
+            &destination_entity_id,
+            &source_file_name,
+            &dest_file_name,
+        ))?;
+        Ok(Self {
+            destination_entity_id,
+            source_file_name,
+            dest_file_name,
+        })
+    }
+
+    /// Full written length.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        MsgToUserTlv::full_len_for_reserved_cfdp_message(Self::payload_len(
+            &self.destination_entity_id,
+            &self.source_file_name,
+            &self.dest_file_name,
+        ))
+    }
+
+    #[inline]
+    fn payload_len(
+        destination_entity_id: &UnsignedByteField,
+        source_file_name: &Lv,
+        dest_file_name: &Lv,
+    ) -> usize {
+        // The destination entity ID is encoded as an LV.
+        1 + destination_entity_id.size() + source_file_name.len_full() + dest_file_name.len_full()
+    }
+
+    /// Write the proxy put message into a raw byte buffer.
+    ///
+    /// Returns the number of bytes written into the provided buffer.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        // The payload length was checked in the constructor.
+        let mut current_index = write_reserved_msg_header(
+            buf,
+            ReservedMessageType::ProxyPutRequest,
+            Self::payload_len(
+                &self.destination_entity_id,
+                &self.source_file_name,
+                &self.dest_file_name,
+            ),
+        )?;
+        buf[current_index] = self.destination_entity_id.size() as u8;
+        current_index += 1;
+        current_index += self
+            .destination_entity_id
+            .write_to_be_bytes(&mut buf[current_index..])?;
+        current_index += self
+            .source_file_name
+            .write_to_be_bytes(&mut buf[current_index..])?;
+        current_index += self
+            .dest_file_name
+            .write_to_be_bytes(&mut buf[current_index..])?;
+        Ok(current_index)
+    }
+}
+
+impl WritableTlv for ProxyPutRequestMessageCreator<'_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_bytes(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
+/// Reader for a proxy put request message.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ProxyPutRequestMessageReader<'data> {
+    destination_entity_id: UnsignedByteField,
+    source_file_name: Lv<'data>,
+    dest_file_name: Lv<'data>,
+}
+
+impl<'data> ProxyPutRequestMessageReader<'data> {
+    /// Read a proxy put request from a raw message to user TLV.
+    pub fn from_bytes(buf: &'data [u8]) -> Result<Self, ReservedMessageReadError> {
+        Self::try_from(MsgToUserTlv::from_bytes(buf)?)
+    }
+
+    /// Destination entity ID.
+    #[inline]
+    pub fn destination_entity_id(&self) -> UnsignedByteField {
+        self.destination_entity_id
+    }
+
+    /// Source file name.
+    #[inline]
+    pub fn source_file_name(&self) -> Lv<'data> {
+        self.source_file_name
+    }
+
+    /// Destination file name.
+    #[inline]
+    pub fn dest_file_name(&self) -> Lv<'data> {
+        self.dest_file_name
+    }
+}
+
+impl<'data> TryFrom<MsgToUserTlv<'data>> for ProxyPutRequestMessageReader<'data> {
+    type Error = ReservedMessageReadError;
+
+    fn try_from(msg_to_user: MsgToUserTlv<'data>) -> Result<Self, Self::Error> {
+        let params = msg_to_user.reserved_msg_params(ReservedMessageType::ProxyPutRequest)?;
+        let dest_id_lv = Lv::from_bytes(params)?;
+        check_entity_id_width(dest_id_lv.len_value())?;
+        let destination_entity_id =
+            UnsignedByteField::new_from_be_bytes(dest_id_lv.len_value(), dest_id_lv.value())?;
+        let mut current_index = dest_id_lv.len_full();
+        let source_file_name = Lv::from_bytes(&params[current_index..])?;
+        current_index += source_file_name.len_full();
+        let dest_file_name = Lv::from_bytes(&params[current_index..])?;
+        Ok(Self {
+            destination_entity_id,
+            source_file_name,
+            dest_file_name,
+        })
+    }
+}
+
+/// Proxy put response message.
+///
+/// A single type is used for both creation and reading because it does not borrow any data.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ProxyPutResponseMessage {
+    condition_code: ConditionCode,
+    delivery_code: DeliveryCode,
+    file_status: FileStatus,
+}
+
+impl ProxyPutResponseMessage {
+    const PAYLOAD_LEN: usize = 1;
+
+    /// Constructor for the proxy put response message.
+    pub fn new(
+        condition_code: ConditionCode,
+        delivery_code: DeliveryCode,
+        file_status: FileStatus,
+    ) -> Self {
+        Self {
+            condition_code,
+            delivery_code,
+            file_status,
+        }
+    }
+
+    /// Read a proxy put response from a raw message to user TLV.
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, ReservedMessageReadError> {
+        Self::try_from(MsgToUserTlv::from_bytes(buf)?)
+    }
+
+    /// Condition code.
+    #[inline]
+    pub fn condition_code(&self) -> ConditionCode {
+        self.condition_code
+    }
+
+    /// Delivery code.
+    #[inline]
+    pub fn delivery_code(&self) -> DeliveryCode {
+        self.delivery_code
+    }
+
+    /// File status.
+    #[inline]
+    pub fn file_status(&self) -> FileStatus {
+        self.file_status
+    }
+
+    /// Full written length.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        MsgToUserTlv::full_len_for_reserved_cfdp_message(Self::PAYLOAD_LEN)
+    }
+
+    /// Write the proxy put response message into a raw byte buffer.
+    ///
+    /// Returns the number of bytes written into the provided buffer.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let current_index = write_reserved_msg_header(
+            buf,
+            ReservedMessageType::ProxyPutResponse,
+            Self::PAYLOAD_LEN,
+        )?;
+        buf[current_index] =
+            pack_status_byte(self.condition_code, self.delivery_code, self.file_status);
+        Ok(current_index + Self::PAYLOAD_LEN)
+    }
+}
+
+impl TryFrom<MsgToUserTlv<'_>> for ProxyPutResponseMessage {
+    type Error = ReservedMessageReadError;
+
+    fn try_from(msg_to_user: MsgToUserTlv<'_>) -> Result<Self, Self::Error> {
+        let params = msg_to_user.reserved_msg_params(ReservedMessageType::ProxyPutResponse)?;
+        let status = *params
+            .first()
+            .ok_or(ByteConversionError::FromSliceTooSmall {
+                found: 0,
+                expected: Self::PAYLOAD_LEN,
+            })?;
+        let (condition_code, delivery_code, file_status) =
+            unpack_status_byte(status).map_err(ReservedMessageReadError::InvalidConditionCode)?;
+        Ok(Self {
+            condition_code,
+            delivery_code,
+            file_status,
+        })
+    }
+}
+
+impl WritableTlv for ProxyPutResponseMessage {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_bytes(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +622,7 @@ mod tests {
         assert!(!msg_to_user.is_empty());
         assert!(msg_to_user.raw_data().is_none());
         assert!(!msg_to_user.is_reserved_cfdp_msg());
+        assert!(msg_to_user.reserved_cfdp_msg_type().is_none());
     }
 
     #[test]
@@ -224,7 +684,7 @@ mod tests {
         let msg_to_user = MsgToUserTlv::new(&custom_value).unwrap();
         let msg_to_user_vec = msg_to_user.to_vec();
         let msg_to_user_from_bytes = MsgToUserTlv::from_bytes(&msg_to_user_vec).unwrap();
-        assert!(!msg_to_user.is_reserved_cfdp_msg());
+        assert!(msg_to_user.reserved_cfdp_msg_type().is_none());
         assert_eq!(msg_to_user_from_bytes, msg_to_user);
         assert_eq!(msg_to_user_from_bytes.value(), msg_to_user.value());
         assert_eq!(msg_to_user_from_bytes.tlv_type(), msg_to_user.tlv_type());
@@ -242,11 +702,361 @@ mod tests {
     }
 
     #[test]
-    fn test_reserved_msg() {
-        let reserved_str = "cfdp";
-        let msg_to_user = MsgToUserTlv::new(reserved_str.as_bytes());
-        assert!(msg_to_user.is_ok());
-        let msg_to_user = msg_to_user.unwrap();
+    fn test_reserved_msg_type_missing() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp").unwrap();
         assert!(msg_to_user.is_reserved_cfdp_msg());
+        assert_eq!(
+            msg_to_user.reserved_cfdp_msg_type(),
+            Some(Err(InvalidReservedMessageTypeError::Missing))
+        );
+    }
+
+    #[test]
+    fn test_reserved_msg_type_unknown() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\xff").unwrap();
+        assert_eq!(
+            msg_to_user.reserved_cfdp_msg_type(),
+            Some(Err(InvalidReservedMessageTypeError::Unknown(0xff)))
+        );
+    }
+
+    #[test]
+    fn test_reserved_msg_type() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x38").unwrap();
+        assert_eq!(
+            msg_to_user.reserved_cfdp_msg_type(),
+            Some(Ok(ReservedMessageType::RemoteResumeRequest))
+        );
+    }
+
+    #[test]
+    fn test_reserved_msg_type_conversion() {
+        let mut valid_types = 0;
+        for raw in 0..=u8::MAX {
+            if let Ok(msg_type) = ReservedMessageType::try_from(raw) {
+                assert_eq!(u8::from(msg_type), raw);
+                valid_types += 1;
+            }
+        }
+        assert_eq!(valid_types, 20);
+        assert_eq!(
+            ReservedMessageType::try_from(0x00),
+            Ok(ReservedMessageType::ProxyPutRequest)
+        );
+        assert_eq!(
+            ReservedMessageType::try_from(0x0A),
+            Ok(ReservedMessageType::OriginatingTransactionId)
+        );
+        assert_eq!(
+            ReservedMessageType::try_from(0x0C),
+            Err(InvalidReservedMessageTypeError::Unknown(0x0C))
+        );
+    }
+
+    #[test]
+    fn test_reserved_msg_type_is_proxy() {
+        let proxy_types = (0..=u8::MAX)
+            .filter_map(|raw| ReservedMessageType::try_from(raw).ok())
+            .filter(|msg_type| msg_type.is_proxy())
+            .count();
+        assert_eq!(proxy_types, 11);
+        assert!(ReservedMessageType::ProxyPutRequest.is_proxy());
+        assert!(ReservedMessageType::ProxyPutCancel.is_proxy());
+        assert!(ReservedMessageType::ProxyClosureRequest.is_proxy());
+        assert!(!ReservedMessageType::OriginatingTransactionId.is_proxy());
+        assert!(!ReservedMessageType::DirectoryListingRequest.is_proxy());
+    }
+
+    fn proxy_put_request_creator() -> ProxyPutRequestMessageCreator<'static, 'static> {
+        ProxyPutRequestMessageCreator::new(
+            UnsignedByteField::new(2, 0x0102),
+            Lv::try_from("src.txt").unwrap(),
+            Lv::try_from("dest.txt").unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_proxy_put_request_serialization() {
+        let creator = proxy_put_request_creator();
+        let mut buf: [u8; 64] = [0; 64];
+        let written = creator.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written, creator.len_written());
+        assert_eq!(written, 2 + 4 + 1 + 3 + 8 + 9);
+        assert_eq!(buf[0], TlvType::MsgToUser as u8);
+        assert_eq!(buf[1] as usize, written - 2);
+        assert_eq!(&buf[2..6], b"cfdp");
+        assert_eq!(buf[6], ReservedMessageType::ProxyPutRequest as u8);
+        assert_eq!(&buf[7..10], &[2, 0x01, 0x02]);
+        assert_eq!(buf[10], 7);
+        assert_eq!(&buf[11..18], b"src.txt");
+        assert_eq!(buf[18], 8);
+        assert_eq!(&buf[19..27], b"dest.txt");
+    }
+
+    #[test]
+    fn test_proxy_put_request_too_large() {
+        // Each file name fits into an LV, but both together exceed the TLV value field.
+        let file_name = [b'a'; 125];
+        let file_name = core::str::from_utf8(&file_name).unwrap();
+        let entity_id = UnsignedByteField::new(2, 0x0102);
+        let src_name = Lv::try_from(file_name).unwrap();
+        let dest_name = Lv::try_from(file_name).unwrap();
+        // Message ID, message type, entity ID LV and two file name LVs.
+        let expected_len = 4 + 1 + 3 + 126 + 126;
+        assert!(expected_len > u8::MAX as usize);
+        assert_eq!(
+            ProxyPutRequestMessageCreator::new(entity_id, src_name, dest_name).unwrap_err(),
+            ReservedMessageCreationError::DataTooLarge(TlvLvDataTooLargeError(expected_len))
+        );
+        // A 120 byte destination name brings the value field to exactly 255 bytes.
+        let shorter_name = Lv::try_from(&file_name[..120]).unwrap();
+        let creator =
+            ProxyPutRequestMessageCreator::new(entity_id, src_name, shorter_name).unwrap();
+        assert_eq!(creator.len_written(), 2 + u8::MAX as usize);
+    }
+
+    #[test]
+    fn test_proxy_put_request_invalid_entity_id_width() {
+        for width in [0, 3, 5, 6, 7, 9] {
+            assert_eq!(
+                ProxyPutRequestMessageCreator::new(
+                    UnsignedByteField::new(width, 0),
+                    Lv::try_from("src.txt").unwrap(),
+                    Lv::try_from("dest.txt").unwrap(),
+                ),
+                Err(ReservedMessageCreationError::InvalidEntityId(
+                    UnsignedByteFieldError::InvalidWidth {
+                        found: width,
+                        expected: None
+                    }
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn test_proxy_put_request_reader_invalid_entity_id_width() {
+        // Empty entity ID followed by two empty file names.
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x00\x00\x00\x00").unwrap();
+        assert_eq!(
+            ProxyPutRequestMessageReader::try_from(msg_to_user),
+            Err(ReservedMessageReadError::InvalidEntityId(
+                UnsignedByteFieldError::InvalidWidth {
+                    found: 0,
+                    expected: None
+                }
+            ))
+        );
+        // 3 byte entity ID.
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x00\x03\x01\x02\x03\x00\x00").unwrap();
+        assert_eq!(
+            ProxyPutRequestMessageReader::try_from(msg_to_user),
+            Err(ReservedMessageReadError::InvalidEntityId(
+                UnsignedByteFieldError::InvalidWidth {
+                    found: 3,
+                    expected: None
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_request_buf_too_small() {
+        let creator = proxy_put_request_creator();
+        let mut buf: [u8; 8] = [0; 8];
+        assert_eq!(
+            creator.write_to_bytes(&mut buf),
+            Err(ByteConversionError::ToSliceTooSmall {
+                found: 8,
+                expected: creator.len_written()
+            })
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_request_round_trip() {
+        let creator = proxy_put_request_creator();
+        let mut buf: [u8; 64] = [0; 64];
+        let written = creator.write_to_bytes(&mut buf).unwrap();
+        let msg_to_user = MsgToUserTlv::from_bytes(&buf[..written]).unwrap();
+        assert_eq!(
+            msg_to_user.reserved_cfdp_msg_type(),
+            Some(Ok(ReservedMessageType::ProxyPutRequest))
+        );
+        let reader = ProxyPutRequestMessageReader::try_from(msg_to_user).unwrap();
+        assert_eq!(
+            reader.destination_entity_id(),
+            UnsignedByteField::new(2, 0x0102)
+        );
+        assert_eq!(
+            reader.source_file_name().value_as_str(),
+            Some(Ok("src.txt"))
+        );
+        assert_eq!(reader.dest_file_name().value_as_str(), Some(Ok("dest.txt")));
+        assert_eq!(
+            ProxyPutRequestMessageReader::from_bytes(&buf[..written]).unwrap(),
+            reader
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_request_reader_wrong_type() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x09").unwrap();
+        assert_eq!(
+            ProxyPutRequestMessageReader::try_from(msg_to_user),
+            Err(ReservedMessageReadError::UnexpectedMessageType {
+                found: ReservedMessageType::ProxyPutCancel,
+                expected: ReservedMessageType::ProxyPutRequest,
+            })
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_request_reader_not_reserved() {
+        let msg_to_user = MsgToUserTlv::new(&[1, 2, 3]).unwrap();
+        assert_eq!(
+            ProxyPutRequestMessageReader::try_from(msg_to_user),
+            Err(ReservedMessageReadError::NotReservedMessage)
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_request_reader_truncated() {
+        // Destination entity ID LV announces 2 bytes, but only 1 follows.
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x00\x02\x01").unwrap();
+        assert!(matches!(
+            ProxyPutRequestMessageReader::try_from(msg_to_user),
+            Err(ReservedMessageReadError::ByteConversion(_))
+        ));
+    }
+
+    fn proxy_put_response() -> ProxyPutResponseMessage {
+        ProxyPutResponseMessage::new(
+            ConditionCode::FileChecksumFailure,
+            DeliveryCode::Incomplete,
+            FileStatus::Retained,
+        )
+    }
+
+    #[test]
+    fn test_proxy_put_response_serialization() {
+        let response = proxy_put_response();
+        let mut buf: [u8; 16] = [0; 16];
+        let written = response.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written, response.len_written());
+        assert_eq!(written, 2 + 4 + 1 + 1);
+        assert_eq!(buf[0], TlvType::MsgToUser as u8);
+        assert_eq!(buf[1], 6);
+        assert_eq!(&buf[2..6], b"cfdp");
+        assert_eq!(buf[6], ReservedMessageType::ProxyPutResponse as u8);
+        assert_eq!(buf[7], 0b0101_0110);
+    }
+
+    #[test]
+    fn test_proxy_put_response_round_trip() {
+        let response = proxy_put_response();
+        let mut buf: [u8; 16] = [0; 16];
+        let written = response.write_to_bytes(&mut buf).unwrap();
+        let msg_to_user = MsgToUserTlv::from_bytes(&buf[..written]).unwrap();
+        assert_eq!(
+            msg_to_user.reserved_cfdp_msg_type(),
+            Some(Ok(ReservedMessageType::ProxyPutResponse))
+        );
+        let read_back = ProxyPutResponseMessage::try_from(msg_to_user).unwrap();
+        assert_eq!(read_back, response);
+        assert_eq!(
+            read_back.condition_code(),
+            ConditionCode::FileChecksumFailure
+        );
+        assert_eq!(read_back.delivery_code(), DeliveryCode::Incomplete);
+        assert_eq!(read_back.file_status(), FileStatus::Retained);
+        assert_eq!(
+            ProxyPutResponseMessage::from_bytes(&buf[..written]).unwrap(),
+            response
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_response_success() {
+        let response = ProxyPutResponseMessage::new(
+            ConditionCode::NoError,
+            DeliveryCode::Complete,
+            FileStatus::Retained,
+        );
+        let mut buf: [u8; 16] = [0; 16];
+        let written = response.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(buf[7], 0b0000_0010);
+        let read_back = ProxyPutResponseMessage::from_bytes(&buf[..written]).unwrap();
+        assert_eq!(read_back, response);
+        assert_eq!(read_back.condition_code(), ConditionCode::NoError);
+        assert_eq!(read_back.delivery_code(), DeliveryCode::Complete);
+        assert_eq!(read_back.file_status(), FileStatus::Retained);
+    }
+
+    #[test]
+    fn test_writable_tlv_impls() {
+        let creator = proxy_put_request_creator();
+        let mut buf: [u8; 64] = [0; 64];
+        let written = creator.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(WritableTlv::len_written(&creator), written);
+        assert_eq!(WritableTlv::to_vec(&creator), buf[..written]);
+
+        let response = proxy_put_response();
+        let written = response.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(WritableTlv::len_written(&response), written);
+        assert_eq!(WritableTlv::to_vec(&response), buf[..written]);
+    }
+
+    #[test]
+    fn test_proxy_put_response_buf_too_small() {
+        let response = proxy_put_response();
+        let mut buf: [u8; 7] = [0; 7];
+        assert_eq!(
+            response.write_to_bytes(&mut buf),
+            Err(ByteConversionError::ToSliceTooSmall {
+                found: 7,
+                expected: 8
+            })
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_response_missing_status() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x07").unwrap();
+        assert_eq!(
+            ProxyPutResponseMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::ByteConversion(
+                ByteConversionError::FromSliceTooSmall {
+                    found: 0,
+                    expected: 1
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_response_invalid_condition_code() {
+        // 0b1001 is not a valid condition code.
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x07\x90").unwrap();
+        assert_eq!(
+            ProxyPutResponseMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::InvalidConditionCode(0b1001))
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_response_wrong_type() {
+        let mut buf: [u8; 64] = [0; 64];
+        let written = proxy_put_request_creator()
+            .write_to_bytes(&mut buf)
+            .unwrap();
+        assert_eq!(
+            ProxyPutResponseMessage::from_bytes(&buf[..written]),
+            Err(ReservedMessageReadError::UnexpectedMessageType {
+                found: ReservedMessageType::ProxyPutRequest,
+                expected: ReservedMessageType::ProxyPutResponse,
+            })
+        );
     }
 }

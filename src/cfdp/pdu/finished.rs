@@ -42,6 +42,30 @@ pub enum FileStatus {
     Unreported = 0b11,
 }
 
+/// Packs the condition code, delivery code and file status into one byte. The spare bit is 0.
+///
+/// This layout is shared by the Finished PDU and the proxy put response message.
+pub(crate) fn pack_status_byte(
+    condition_code: ConditionCode,
+    delivery_code: DeliveryCode,
+    file_status: FileStatus,
+) -> u8 {
+    ((condition_code as u8) << 4) | ((delivery_code as u8) << 2) | file_status as u8
+}
+
+/// Inverse of [pack_status_byte]. Returns the raw condition code if it is invalid.
+pub(crate) fn unpack_status_byte(
+    status: u8,
+) -> Result<(ConditionCode, DeliveryCode, FileStatus), u8> {
+    let raw_condition_code = (status >> 4) & 0b1111;
+    let condition_code =
+        ConditionCode::try_from(raw_condition_code).map_err(|_| raw_condition_code)?;
+    // Both fields cover their full value range, so the conversions can not fail.
+    let delivery_code = DeliveryCode::try_from((status >> 2) & 0b1).unwrap();
+    let file_status = FileStatus::try_from(status & 0b11).unwrap();
+    Ok((condition_code, delivery_code, file_status))
+}
+
 /// Finished PDU abstraction.
 ///
 /// For more information, refer to CFDP chapter 5.2.3.
@@ -184,9 +208,8 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
         buf[current_idx] = FileDirectiveType::Finished as u8;
         current_idx += 1;
-        buf[current_idx] = ((self.condition_code as u8) << 4)
-            | ((self.delivery_code as u8) << 2)
-            | self.file_status as u8;
+        buf[current_idx] =
+            pack_status_byte(self.condition_code, self.delivery_code, self.file_status);
         current_idx += 1;
         for fs_responses in self.fs_responses {
             current_idx += fs_responses.write_to_bytes(&mut buf[current_idx..])?;
@@ -297,11 +320,8 @@ impl<'buf> FinishedPduReader<'buf> {
             });
         }
         current_idx += 1;
-        let condition_code = ConditionCode::try_from((buf[current_idx] >> 4) & 0b1111)
-            .map_err(|_| PduError::InvalidConditionCode((buf[current_idx] >> 4) & 0b1111))?;
-        // Unwrap is okay here for both of the following operations which can not fail.
-        let delivery_code = DeliveryCode::try_from((buf[current_idx] >> 2) & 0b1).unwrap();
-        let file_status = FileStatus::try_from(buf[current_idx] & 0b11).unwrap();
+        let (condition_code, delivery_code, file_status) =
+            unpack_status_byte(buf[current_idx]).map_err(PduError::InvalidConditionCode)?;
         current_idx += 1;
         let (fs_responses_raw, fault_location) =
             Self::parse_tlv_fields(current_idx, full_len_without_crc, buf)?;

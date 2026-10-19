@@ -250,6 +250,20 @@ impl<'data> Tlv<'data> {
             data: self.value().to_vec(),
         }
     }
+
+    /// Write the TLV to a byte buffer.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        generic_len_check_data_serialization(buf, self.value().len(), MIN_TLV_LEN)?;
+        buf[0] = self.tlv_type_field.into();
+        self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
+        Ok(self.len_full())
+    }
+
+    /// Length of the written TLV.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        self.len_full()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -267,15 +281,12 @@ impl ReadableTlv for Tlv<'_> {
 
 impl WritableTlv for Tlv<'_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        generic_len_check_data_serialization(buf, self.value().len(), MIN_TLV_LEN)?;
-        buf[0] = self.tlv_type_field.into();
-        self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
-        Ok(self.len_full())
+        self.write_to_bytes(buf)
     }
 
     #[inline]
     fn len_written(&self) -> usize {
-        self.len_full()
+        self.len_written()
     }
 }
 

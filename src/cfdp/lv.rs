@@ -123,7 +123,7 @@ impl<'data> Lv<'data> {
 
     /// Raw value part of the LV.
     #[inline]
-    pub fn value(&self) -> &[u8] {
+    pub fn value(&self) -> &'data [u8] {
         self.data
     }
 
@@ -179,6 +179,17 @@ impl<'data> Lv<'data> {
             data: &buf[MIN_LV_LEN..MIN_LV_LEN + value_len],
             raw_data: Some(buf),
         })
+    }
+}
+
+impl<'data> TryFrom<&'data str> for Lv<'data> {
+    type Error = TlvLvDataTooLargeError;
+
+    /// Helper function to build a string LV. This is especially useful for the file or directory
+    /// path LVs
+    #[inline]
+    fn try_from(value: &'data str) -> Result<Self, Self::Error> {
+        Self::new_from_str(value)
     }
 }
 
