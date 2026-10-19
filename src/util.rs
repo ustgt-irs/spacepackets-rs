@@ -186,6 +186,29 @@ impl UnsignedByteField {
             }),
         }
     }
+
+    /// Size of the unsigned enumeration in bytes.
+    #[inline]
+    pub fn size(&self) -> usize {
+        UnsignedEnum::size(self)
+    }
+
+    /// Type-erased raw value.
+    #[inline]
+    pub fn value_raw(&self) -> u64 {
+        UnsignedEnum::value_raw(self)
+    }
+
+    /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        UnsignedEnum::write_to_be_bytes(self, buf)
+    }
+
+    /// Convert to a [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        UnsignedEnum::to_vec(self)
+    }
 }
 
 impl UnsignedEnum for UnsignedByteField {
@@ -249,6 +272,31 @@ impl<TYPE: Copy + Into<u64>> GenericUnsignedByteField<TYPE> {
     /// Raw value.
     pub const fn value(&self) -> TYPE {
         self.value
+    }
+}
+
+impl<TYPE: Copy + ToBeBytes + Into<u64>> GenericUnsignedByteField<TYPE> {
+    /// Size of the unsigned enumeration in bytes.
+    #[inline]
+    pub fn size(&self) -> usize {
+        UnsignedEnum::size(self)
+    }
+
+    /// Type-erased raw value.
+    #[inline]
+    pub fn value_raw(&self) -> u64 {
+        UnsignedEnum::value_raw(self)
+    }
+
+    /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        UnsignedEnum::write_to_be_bytes(self, buf)
+    }
+
+    /// Convert to a [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        UnsignedEnum::to_vec(self)
     }
 }
 
@@ -387,7 +435,7 @@ mod tests {
     use crate::ByteConversionError;
     use crate::util::{
         UnsignedByteField, UnsignedByteFieldError, UnsignedByteFieldU8, UnsignedByteFieldU16,
-        UnsignedByteFieldU32, UnsignedByteFieldU64, UnsignedEnum,
+        UnsignedByteFieldU32, UnsignedByteFieldU64,
     };
     use std::format;
 

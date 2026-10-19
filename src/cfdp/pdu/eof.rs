@@ -4,7 +4,7 @@ use crate::cfdp::pdu::{
     FileDirectiveType, PduError, PduHeader, add_pdu_crc, generic_length_checks_pdu_deserialization,
     read_fss_field, write_fss_field,
 };
-use crate::cfdp::tlv::{EntityIdTlv, WritableTlv};
+use crate::cfdp::tlv::EntityIdTlv;
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -183,6 +183,12 @@ impl EofPdu {
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
+
+    /// Write the PDU to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PduError> {
+        WritablePduPacket::to_vec(self)
+    }
 }
 
 impl CfdpPdu for EofPdu {
@@ -217,7 +223,7 @@ mod tests {
     use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag, PduType, TransmissionMode};
     #[cfg(feature = "serde")]
     use crate::tests::generic_serde_test;
-    use crate::util::{UnsignedByteFieldU16, UnsignedEnum};
+    use crate::util::UnsignedByteFieldU16;
 
     fn verify_state_no_error_no_crc(eof_pdu: &EofPdu, file_flag: LargeFileFlag) {
         verify_state(eof_pdu, CrcFlag::NoCrc, file_flag, ConditionCode::NoError);

@@ -159,7 +159,7 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 /// ```
 /// use core::time::Duration;
 /// use spacepackets::time::cds::{CdsTime, length_of_day_segment_from_pfield, LengthOfDaySegment};
-/// use spacepackets::time::{TimeWriter, CcsdsTimeCode, CcsdsTimeProvider};
+/// use spacepackets::time::{CcsdsTimeCode, CcsdsTimeProvider};
 ///
 /// let timestamp_now = CdsTime::now_with_u16_days().unwrap();
 /// let mut raw_stamp = [0; 7];
@@ -231,7 +231,7 @@ impl DynCdsTimeProvider for CdsTime<DaysLen24Bits> {}
 /// use spacepackets::time::cds::{
 ///     CdsTime, LengthOfDaySegment, get_dyn_time_provider_from_bytes, SubmillisPrecision,
 /// };
-/// use spacepackets::time::{TimeWriter, CcsdsTimeCode, CcsdsTimeProvider};
+/// use spacepackets::time::{CcsdsTimeCode, CcsdsTimeProvider};
 ///
 /// let timestamp_now = CdsTime::new_with_u16_days(24, 24);
 /// let mut raw_stamp = [0; 7];
@@ -558,6 +558,12 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         self.ms_of_day = conversion_from_now.unix_conversion.ms_of_day;
         Ok(())
     }
+
+    /// Length of the written timestamp.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        CcsdsTimeProvider::len_as_bytes(self)
+    }
 }
 
 impl CdsTime<DaysLen24Bits> {
@@ -775,6 +781,12 @@ impl CdsTime<DaysLen16Bits> {
         }
         Ok(provider)
     }
+
+    /// Write the timestamp to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, TimestampError> {
+        TimeWriter::to_vec(self)
+    }
 }
 
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
@@ -916,7 +928,7 @@ impl TimeWriter for CdsTime<DaysLen16Bits> {
     }
 
     fn len_written(&self) -> usize {
-        self.len_as_bytes()
+        self.len_written()
     }
 }
 
@@ -945,6 +957,12 @@ impl CdsTime<DaysLen24Bits> {
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.write_to_slice(buf)
     }
+
+    /// Write the timestamp to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, TimestampError> {
+        TimeWriter::to_vec(self)
+    }
 }
 
 impl TimeWriter for CdsTime<DaysLen24Bits> {
@@ -953,7 +971,7 @@ impl TimeWriter for CdsTime<DaysLen24Bits> {
     }
 
     fn len_written(&self) -> usize {
-        self.len_as_bytes()
+        self.len_written()
     }
 }
 

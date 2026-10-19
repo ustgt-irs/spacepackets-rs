@@ -4,7 +4,7 @@ use crate::cfdp::TlvLvError;
 use crate::cfdp::lv::{
     Lv, MIN_LV_LEN, generic_len_check_data_serialization, generic_len_check_deserialization,
 };
-use crate::util::{UnsignedByteField, UnsignedByteFieldError, UnsignedEnum};
+use crate::util::{UnsignedByteField, UnsignedByteFieldError};
 #[cfg(feature = "alloc")]
 use alloc::vec;
 #[cfg(feature = "alloc")]
@@ -270,6 +270,42 @@ impl<'data> Tlv<'data> {
     pub fn len_written(&self) -> usize {
         self.len_full()
     }
+
+    /// Write the TLV to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+
+    /// Value field of the TLV.
+    #[inline]
+    pub fn value(&self) -> &'data [u8] {
+        self.lv.value()
+    }
+
+    /// Checks whether the value field is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        ReadableTlv::is_empty(self)
+    }
+
+    /// Length of the value field.
+    #[inline]
+    pub fn len_value(&self) -> usize {
+        ReadableTlv::len_value(self)
+    }
+
+    /// Full raw length, including the type and length byte.
+    #[inline]
+    pub fn len_full(&self) -> usize {
+        ReadableTlv::len_full(self)
+    }
+
+    /// TLV type field.
+    #[inline]
+    pub fn tlv_type_field(&self) -> TlvTypeField {
+        self.tlv_type_field
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -280,8 +316,9 @@ impl PartialEq<TlvOwned> for Tlv<'_> {
 }
 
 impl ReadableTlv for Tlv<'_> {
+    #[inline]
     fn value(&self) -> &[u8] {
-        self.lv.value()
+        self.value()
     }
 }
 
@@ -299,7 +336,7 @@ impl WritableTlv for Tlv<'_> {
 impl GenericTlv for Tlv<'_> {
     #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
-        self.tlv_type_field
+        self.tlv_type_field()
     }
 }
 
@@ -358,9 +395,45 @@ pub mod alloc_mod {
             self.write_to_slice(buf)
         }
 
+        /// Length of the written TLV.
         #[inline]
-        fn len_written(&self) -> usize {
+        pub fn len_written(&self) -> usize {
             self.data.len() + 2
+        }
+
+        /// Write the TLV to an owned [alloc::vec::Vec].
+        pub fn to_vec(&self) -> Vec<u8> {
+            WritableTlv::to_vec(self)
+        }
+
+        /// Value field of the TLV.
+        #[inline]
+        pub fn value(&self) -> &[u8] {
+            &self.data
+        }
+
+        /// Checks whether the value field is empty.
+        #[inline]
+        pub fn is_empty(&self) -> bool {
+            ReadableTlv::is_empty(self)
+        }
+
+        /// Length of the value field.
+        #[inline]
+        pub fn len_value(&self) -> usize {
+            ReadableTlv::len_value(self)
+        }
+
+        /// Full raw length, including the type and length byte.
+        #[inline]
+        pub fn len_full(&self) -> usize {
+            ReadableTlv::len_full(self)
+        }
+
+        /// TLV type field.
+        #[inline]
+        pub fn tlv_type_field(&self) -> TlvTypeField {
+            self.tlv_type_field
         }
 
         /// Convert to [Tlv]
@@ -377,7 +450,7 @@ pub mod alloc_mod {
     impl ReadableTlv for TlvOwned {
         #[inline]
         fn value(&self) -> &[u8] {
-            &self.data
+            self.value()
         }
     }
 
@@ -395,7 +468,7 @@ pub mod alloc_mod {
     impl GenericTlv for TlvOwned {
         #[inline]
         fn tlv_type_field(&self) -> TlvTypeField {
-            self.tlv_type_field
+            self.tlv_type_field()
         }
     }
 
@@ -477,16 +550,30 @@ impl EntityIdTlv {
         Ok(Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).unwrap())
     }
 
-    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    /// Write the TLV to a byte buffer.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         Self::len_check(buf)?;
         buf[0] = TlvType::EntityId as u8;
         buf[1] = self.entity_id.size() as u8;
         Ok(2 + self.entity_id.write_to_be_bytes(&mut buf[2..])?)
     }
 
+    /// Length of the written TLV.
     #[inline]
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.len_full()
+    }
+
+    /// Write the TLV to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+
+    /// TLV type field.
+    #[inline]
+    pub fn tlv_type_field(&self) -> TlvTypeField {
+        TlvTypeField::Standard(TlvType::EntityId)
     }
 }
 
@@ -504,7 +591,7 @@ impl WritableTlv for EntityIdTlv {
 impl GenericTlv for EntityIdTlv {
     #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
-        TlvTypeField::Standard(TlvType::EntityId)
+        self.tlv_type_field()
     }
 }
 
@@ -755,7 +842,8 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         })
     }
 
-    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    /// Write the TLV to a byte buffer.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_full() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -780,9 +868,22 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         Ok(current_idx)
     }
 
+    /// Length of the written TLV.
     #[inline]
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.len_full()
+    }
+
+    /// Write the TLV to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+
+    /// TLV type field.
+    #[inline]
+    pub fn tlv_type_field(&self) -> TlvTypeField {
+        TlvTypeField::Standard(TlvType::FilestoreRequest)
     }
 }
 
@@ -800,7 +901,7 @@ impl WritableTlv for FilestoreRequestTlv<'_, '_> {
 impl GenericTlv for FilestoreRequestTlv<'_, '_> {
     #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
-        TlvTypeField::Standard(TlvType::FilestoreRequest)
+        self.tlv_type_field()
     }
 }
 
@@ -968,7 +1069,8 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         })
     }
 
-    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    /// Write the TLV to a byte buffer.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_full() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -995,8 +1097,21 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         Ok(current_idx)
     }
 
-    fn len_written(&self) -> usize {
+    /// Length of the written TLV.
+    pub fn len_written(&self) -> usize {
         self.len_full()
+    }
+
+    /// Write the TLV to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+
+    /// TLV type field.
+    #[inline]
+    pub fn tlv_type_field(&self) -> TlvTypeField {
+        TlvTypeField::Standard(TlvType::FilestoreResponse)
     }
 }
 
@@ -1014,7 +1129,7 @@ impl WritableTlv for FilestoreResponseTlv<'_, '_, '_> {
 impl GenericTlv for FilestoreResponseTlv<'_, '_, '_> {
     #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
-        TlvTypeField::Standard(TlvType::FilestoreResponse)
+        self.tlv_type_field()
     }
 }
 
@@ -1041,7 +1156,7 @@ mod tests {
     use crate::cfdp::TlvLvError;
     use crate::cfdp::lv::Lv;
     use crate::cfdp::tlv::{FilestoreActionCode, FilestoreRequestTlv, Tlv, TlvType, TlvTypeField};
-    use crate::util::{UbfU8, UbfU16, UnsignedEnum};
+    use crate::util::{UbfU8, UbfU16};
     use alloc::string::ToString;
 
     const TLV_TEST_STR_0: &str = "hello.txt";

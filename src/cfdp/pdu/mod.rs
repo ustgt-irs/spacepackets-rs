@@ -4,7 +4,7 @@ use crate::cfdp::pdu::ack::InvalidAckedDirectiveCodeError;
 use crate::cfdp::pdu::nak::InvalidStartOrEndOfScopeError;
 use crate::cfdp::*;
 use crate::crc::CRC_CCITT_FALSE;
-use crate::util::{UnsignedByteField, UnsignedByteFieldU8, UnsignedEnum};
+use crate::util::{UnsignedByteField, UnsignedByteFieldU8};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
@@ -744,7 +744,7 @@ mod tests {
         SegmentationControl, TransmissionMode,
     };
     use crate::util::{
-        UbfU8, UbfU16, UnsignedByteField, UnsignedByteFieldU8, UnsignedByteFieldU16, UnsignedEnum,
+        UbfU8, UbfU16, UnsignedByteField, UnsignedByteFieldU8, UnsignedByteFieldU16,
     };
     use std::format;
 

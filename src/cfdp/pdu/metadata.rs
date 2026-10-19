@@ -8,15 +8,12 @@ use crate::cfdp::pdu::{
     read_fss_field, write_fss_field,
 };
 use crate::cfdp::tlv::Tlv;
-#[cfg(feature = "alloc")]
-use crate::cfdp::tlv::WritableTlv;
 use crate::cfdp::{ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use super::tlv::ReadableTlv;
 use super::{CfdpPdu, WritablePduPacket};
 
 /// Generic metadata parameters.
@@ -242,6 +239,12 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
+
+    /// Write the PDU to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PduError> {
+        WritablePduPacket::to_vec(self)
+    }
 }
 
 impl CfdpPdu for MetadataPduCreator<'_, '_, '_> {
@@ -430,9 +433,9 @@ mod tests {
     use crate::cfdp::pdu::tests::{
         TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID, common_pdu_conf, verify_raw_header,
     };
-    use crate::cfdp::pdu::{CfdpPdu, PduError, WritablePduPacket};
+    use crate::cfdp::pdu::{CfdpPdu, PduError};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
-    use crate::cfdp::tlv::{ReadableTlv, Tlv, TlvOwned, TlvType, WritableTlv};
+    use crate::cfdp::tlv::{Tlv, TlvOwned, TlvType};
     use crate::cfdp::{
         ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag,
         SegmentationControl, TransmissionMode,

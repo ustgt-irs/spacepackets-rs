@@ -3,15 +3,12 @@ use crate::ByteConversionError;
 use crate::cfdp::pdu::{
     FileDirectiveType, PduError, PduHeader, add_pdu_crc, generic_length_checks_pdu_deserialization,
 };
-use crate::cfdp::tlv::{
-    EntityIdTlv, FilestoreResponseTlv, GenericTlv, Tlv, TlvType, TlvTypeField, WritableTlv,
-};
+use crate::cfdp::tlv::{EntityIdTlv, FilestoreResponseTlv, Tlv, TlvType, TlvTypeField};
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, PduType};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use super::tlv::ReadableTlv;
 use super::{CfdpPdu, InvalidTlvTypeFieldError, WritablePduPacket};
 
 /// Delivery code enumeration.
@@ -232,6 +229,12 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
     /// Length of the written PDU in bytes.
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+
+    /// Write the PDU to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PduError> {
+        WritablePduPacket::to_vec(self)
     }
 }
 

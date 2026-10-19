@@ -528,16 +528,28 @@ impl<'app_data> PusTcCreator<'app_data> {
             .copy_from_slice(self.app_data);
         Ok(writer_unfinalized)
     }
-}
 
-impl WritablePusPacket for PusTcCreator<'_> {
+    /// Length of the written packet, including the CRC.
     #[inline]
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         let mut len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len();
         if self.has_checksum() {
             len += 2;
         }
         len
+    }
+
+    /// Write the packet to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PusError> {
+        WritablePusPacket::to_vec(self)
+    }
+}
+
+impl WritablePusPacket for PusTcCreator<'_> {
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 
     #[inline]
