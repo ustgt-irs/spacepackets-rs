@@ -217,6 +217,8 @@ pub enum ChecksumType {
 pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 
 /// TLV or LV data larger than allowed [u8::MAX].
+///
+/// Contains the invalid payload length.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
