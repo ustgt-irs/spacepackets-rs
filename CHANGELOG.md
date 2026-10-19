@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - `Lv::value` now returns a slice with the lifetime of the underlying data instead of the
   lifetime of the `Lv` itself.
+- Several getters now return data with the lifetime of the underlying buffer instead of the
+  lifetime of the object: `Lv::raw_data`, `Tlv::raw_data`, `MsgToUserTlv::value` and
+  `MsgToUserTlv::raw_data`, the file name and option getters of `MetadataPduReader`,
+  `MetadataPduCreator::options_iter`, the filestore response getters of `FinishedPduReader` and
+  `FinishedPduCreator`, `NakPduReader::get_segment_requests_iterator`, and `timestamp` and
+  `source_data` of both `PusTmCreator` variants.
 - Renamed `write_to_bytes` to `write_to_slice` across the crate. This includes the
   `write_to_bytes_no_crc`, `write_to_bytes_crc_no_table`, `write_to_bytes_no_checksum`,
   `write_to_bytes_checksum_no_table` and `write_to_bytes_partially` variants, as well as

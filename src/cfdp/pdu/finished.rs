@@ -167,7 +167,9 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
 
     /// Filestore responses as a slice.
     #[inline]
-    pub fn filestore_responses(&self) -> &[FilestoreResponseTlv<'_, '_, '_>] {
+    pub fn filestore_responses(
+        &self,
+    ) -> &'fs_responses [FilestoreResponseTlv<'fs_responses, 'fs_responses, 'fs_responses>] {
         self.fs_responses
     }
 
@@ -346,13 +348,13 @@ impl<'buf> FinishedPduReader<'buf> {
 
     /// Raw filestore responses.
     #[inline]
-    pub fn fs_responses_raw(&self) -> &[u8] {
+    pub fn fs_responses_raw(&self) -> &'buf [u8] {
         self.fs_responses_raw
     }
 
     /// Iterator over the filestore responses.
     #[inline]
-    pub fn fs_responses_iter(&self) -> FilestoreResponseIterator<'_> {
+    pub fn fs_responses_iter(&self) -> FilestoreResponseIterator<'buf> {
         FilestoreResponseIterator {
             responses_buf: self.fs_responses_raw,
             current_idx: 0,

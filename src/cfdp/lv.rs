@@ -130,7 +130,7 @@ impl<'data> Lv<'data> {
     /// If the LV was generated from a raw bytestream using [Self::from_bytes], the raw start
     /// of the LV can be retrieved with this method.
     #[inline]
-    pub fn raw_data(&self) -> Option<&[u8]> {
+    pub fn raw_data(&self) -> Option<&'data [u8]> {
         self.raw_data
     }
 
@@ -363,5 +363,12 @@ mod tests {
         let str_lv = Lv::new_from_string(&string);
         assert!(str_lv.is_ok());
         verify_test_str_lv(str_lv.unwrap());
+    }
+
+    #[test]
+    fn test_raw_data_outlives_lv() {
+        let buf: [u8; 4] = [3, 1, 2, 3];
+        let raw_data = Lv::from_bytes(&buf).unwrap().raw_data();
+        assert_eq!(raw_data, Some(&buf[..]));
     }
 }

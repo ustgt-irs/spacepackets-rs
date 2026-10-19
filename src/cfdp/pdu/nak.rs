@@ -227,7 +227,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
 
     /// Semgent requests.
     #[inline]
-    pub fn segment_requests(&self) -> Option<&SegmentRequests<'_>> {
+    pub fn segment_requests(&self) -> Option<&SegmentRequests<'seg_reqs>> {
         self.segment_requests.as_ref()
     }
 
@@ -739,7 +739,7 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
     }
 
     /// Get a generic segment request iterator.
-    pub fn get_segment_requests_iterator(&self) -> Option<SegmentRequestIter<'_>> {
+    pub fn get_segment_requests_iterator(&self) -> Option<SegmentRequestIter<'seg_reqs>> {
         if self.seg_reqs_raw.is_empty() {
             return None;
         }

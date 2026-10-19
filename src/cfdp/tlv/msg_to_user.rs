@@ -37,7 +37,7 @@ impl<'data> MsgToUserTlv<'data> {
     delegate! {
         to self.tlv {
             /// Value field of the TLV.
-            pub fn value(&self) -> &[u8];
+            pub fn value(&self) -> &'data [u8];
 
             /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
             /// [Self::value]
@@ -48,7 +48,7 @@ impl<'data> MsgToUserTlv<'data> {
             pub fn is_empty(&self) -> bool;
             /// If the TLV was generated from a raw bytestream using [Self::from_bytes], the raw start
             /// of the TLV can be retrieved with this method.
-            pub fn raw_data(&self) -> Option<&[u8]>;
+            pub fn raw_data(&self) -> Option<&'data [u8]>;
         }
     }
 
@@ -1085,5 +1085,16 @@ mod tests {
                 expected: ReservedMessageType::ProxyPutResponse,
             })
         );
+    }
+
+    #[test]
+    fn test_data_outlives_msg_to_user() {
+        let buf: [u8; 6] = [TlvType::MsgToUser as u8, 4, 1, 2, 3, 4];
+        let (value, raw_data) = {
+            let msg_to_user = MsgToUserTlv::from_bytes(&buf).unwrap();
+            (msg_to_user.value(), msg_to_user.raw_data())
+        };
+        assert_eq!(value, &[1, 2, 3, 4]);
+        assert_eq!(raw_data, Some(&buf[..]));
     }
 }
