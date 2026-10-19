@@ -5,7 +5,7 @@ use super::{GenericTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::{
     ByteConversionError,
     cfdp::{
-        ConditionCode, InvalidTlvTypeFieldError, TlvLvDataTooLargeError,
+        ConditionCode, InvalidTlvTypeFieldError, TlvLvDataTooLargeError, TransmissionMode,
         lv::Lv,
         pdu::finished::{DeliveryCode, FileStatus, pack_status_byte, unpack_status_byte},
     },
@@ -281,10 +281,13 @@ pub enum ReservedMessageCreationError {
     /// Invalid entity ID.
     #[error("invalid entity ID: {0}")]
     InvalidEntityId(#[from] UnsignedByteFieldError),
+    /// Invalid transaction sequence number.
+    #[error("invalid transaction sequence number: {0}")]
+    InvalidTransactionSeqNum(UnsignedByteFieldError),
 }
 
-/// Entity IDs must be 1, 2, 4 or 8 bytes wide.
-fn check_entity_id_width(width: usize) -> Result<(), UnsignedByteFieldError> {
+/// Entity IDs and transaction sequence numbers must be 1, 2, 4 or 8 bytes wide.
+fn check_byte_field_width(width: usize) -> Result<(), UnsignedByteFieldError> {
     if !matches!(width, 1 | 2 | 4 | 8) {
         return Err(UnsignedByteFieldError::InvalidWidth {
             found: width,
@@ -321,6 +324,9 @@ pub enum ReservedMessageReadError {
     /// Invalid entity ID.
     #[error("invalid entity ID: {0}")]
     InvalidEntityId(#[from] UnsignedByteFieldError),
+    /// Invalid transaction sequence number.
+    #[error("invalid transaction sequence number: {0}")]
+    InvalidTransactionSeqNum(UnsignedByteFieldError),
     /// Invalid condition code.
     #[error("invalid condition code {0}")]
     InvalidConditionCode(u8),
@@ -369,6 +375,17 @@ fn write_reserved_msg_header(
     Ok(Tlv::MIN_LEN + MsgToUserTlv::RESERVED_MESSAGE_ID_LEN + 1)
 }
 
+/// Reads the first parameter byte of a reserved message which has a single byte parameter.
+fn read_single_byte_param(params: &[u8]) -> Result<u8, ByteConversionError> {
+    params
+        .first()
+        .copied()
+        .ok_or(ByteConversionError::FromSliceTooSmall {
+            found: 0,
+            expected: 1,
+        })
+}
+
 /// Constructor for a proxy put request message.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
@@ -384,7 +401,7 @@ impl<'src_lv, 'dest_lv> ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
         source_file_name: Lv<'src_lv>,
         dest_file_name: Lv<'dest_lv>,
     ) -> Result<Self, ReservedMessageCreationError> {
-        check_entity_id_width(destination_entity_id.size())?;
+        check_byte_field_width(destination_entity_id.size())?;
         MsgToUserTlv::check_reserved_message_payload_len(Self::payload_len(
             &destination_entity_id,
             &source_file_name,
@@ -502,7 +519,7 @@ impl<'data> TryFrom<MsgToUserTlv<'data>> for ProxyPutRequestMessageReader<'data>
     fn try_from(msg_to_user: MsgToUserTlv<'data>) -> Result<Self, Self::Error> {
         let params = msg_to_user.reserved_msg_params(ReservedMessageType::ProxyPutRequest)?;
         let dest_id_lv = Lv::from_bytes(params)?;
-        check_entity_id_width(dest_id_lv.len_value())?;
+        check_byte_field_width(dest_id_lv.len_value())?;
         let destination_entity_id =
             UnsignedByteField::new_from_be_bytes(dest_id_lv.len_value(), dest_id_lv.value())?;
         let mut current_index = dest_id_lv.len_full();
@@ -599,12 +616,7 @@ impl TryFrom<MsgToUserTlv<'_>> for ProxyPutResponseMessage {
 
     fn try_from(msg_to_user: MsgToUserTlv<'_>) -> Result<Self, Self::Error> {
         let params = msg_to_user.reserved_msg_params(ReservedMessageType::ProxyPutResponse)?;
-        let status = *params
-            .first()
-            .ok_or(ByteConversionError::FromSliceTooSmall {
-                found: 0,
-                expected: Self::PAYLOAD_LEN,
-            })?;
+        let status = read_single_byte_param(params)?;
         let (condition_code, delivery_code, file_status) =
             unpack_status_byte(status).map_err(ReservedMessageReadError::InvalidConditionCode)?;
         Ok(Self {
@@ -616,6 +628,345 @@ impl TryFrom<MsgToUserTlv<'_>> for ProxyPutResponseMessage {
 }
 
 impl WritableTlv for ProxyPutResponseMessage {
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
+/// Proxy transmission mode message.
+///
+/// Overrides the transmission mode of a proxy put request sent along with it.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ProxyTransmissionModeMessage {
+    transmission_mode: TransmissionMode,
+}
+
+impl ProxyTransmissionModeMessage {
+    const PAYLOAD_LEN: usize = 1;
+
+    /// Constructor for the proxy transmission mode message.
+    pub fn new(transmission_mode: TransmissionMode) -> Self {
+        Self { transmission_mode }
+    }
+
+    /// Read a proxy transmission mode message from a raw message to user TLV.
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, ReservedMessageReadError> {
+        Self::try_from(MsgToUserTlv::from_bytes(buf)?)
+    }
+
+    /// Transmission mode.
+    #[inline]
+    pub fn transmission_mode(&self) -> TransmissionMode {
+        self.transmission_mode
+    }
+
+    /// Full written length.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        MsgToUserTlv::full_len_for_reserved_cfdp_message(Self::PAYLOAD_LEN)
+    }
+
+    /// Write the proxy transmission mode message into a raw byte buffer.
+    ///
+    /// Returns the number of bytes written into the provided buffer.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let current_index = write_reserved_msg_header(
+            buf,
+            ReservedMessageType::ProxyTransmissionMode,
+            Self::PAYLOAD_LEN,
+        )?;
+        // 7 spare bits set to 0, followed by the transmission mode bit.
+        buf[current_index] = self.transmission_mode as u8;
+        Ok(current_index + Self::PAYLOAD_LEN)
+    }
+
+    /// Write the message to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+}
+
+impl TryFrom<MsgToUserTlv<'_>> for ProxyTransmissionModeMessage {
+    type Error = ReservedMessageReadError;
+
+    fn try_from(msg_to_user: MsgToUserTlv<'_>) -> Result<Self, Self::Error> {
+        let params = msg_to_user.reserved_msg_params(ReservedMessageType::ProxyTransmissionMode)?;
+        let param = read_single_byte_param(params)?;
+        // A single bit covers the full value range, so the conversion can not fail.
+        let transmission_mode = TransmissionMode::try_from(param & 0b1).unwrap();
+        Ok(Self { transmission_mode })
+    }
+}
+
+impl WritableTlv for ProxyTransmissionModeMessage {
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
+/// Proxy closure request message.
+///
+/// Overrides the closure requested flag of a proxy put request sent along with it.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ProxyClosureRequestMessage {
+    closure_requested: bool,
+}
+
+impl ProxyClosureRequestMessage {
+    const PAYLOAD_LEN: usize = 1;
+
+    /// Constructor for the proxy closure request message.
+    pub fn new(closure_requested: bool) -> Self {
+        Self { closure_requested }
+    }
+
+    /// Read a proxy closure request message from a raw message to user TLV.
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, ReservedMessageReadError> {
+        Self::try_from(MsgToUserTlv::from_bytes(buf)?)
+    }
+
+    /// Closure requested flag.
+    #[inline]
+    pub fn closure_requested(&self) -> bool {
+        self.closure_requested
+    }
+
+    /// Full written length.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        MsgToUserTlv::full_len_for_reserved_cfdp_message(Self::PAYLOAD_LEN)
+    }
+
+    /// Write the proxy closure request message into a raw byte buffer.
+    ///
+    /// Returns the number of bytes written into the provided buffer.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let current_index = write_reserved_msg_header(
+            buf,
+            ReservedMessageType::ProxyClosureRequest,
+            Self::PAYLOAD_LEN,
+        )?;
+        // 7 spare bits set to 0, followed by the closure requested bit.
+        buf[current_index] = self.closure_requested as u8;
+        Ok(current_index + Self::PAYLOAD_LEN)
+    }
+
+    /// Write the message to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+}
+
+impl TryFrom<MsgToUserTlv<'_>> for ProxyClosureRequestMessage {
+    type Error = ReservedMessageReadError;
+
+    fn try_from(msg_to_user: MsgToUserTlv<'_>) -> Result<Self, Self::Error> {
+        let params = msg_to_user.reserved_msg_params(ReservedMessageType::ProxyClosureRequest)?;
+        let param = read_single_byte_param(params)?;
+        Ok(Self {
+            closure_requested: param & 0b1 == 1,
+        })
+    }
+}
+
+impl WritableTlv for ProxyClosureRequestMessage {
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
+/// Proxy put cancel message.
+///
+/// Cancels a proxy put operation. The message has no parameters.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ProxyPutCancelMessage;
+
+impl ProxyPutCancelMessage {
+    const PAYLOAD_LEN: usize = 0;
+
+    /// Read a proxy put cancel message from a raw message to user TLV.
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, ReservedMessageReadError> {
+        Self::try_from(MsgToUserTlv::from_bytes(buf)?)
+    }
+
+    /// Full written length.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        MsgToUserTlv::full_len_for_reserved_cfdp_message(Self::PAYLOAD_LEN)
+    }
+
+    /// Write the proxy put cancel message into a raw byte buffer.
+    ///
+    /// Returns the number of bytes written into the provided buffer.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        write_reserved_msg_header(buf, ReservedMessageType::ProxyPutCancel, Self::PAYLOAD_LEN)
+    }
+
+    /// Write the message to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+}
+
+impl TryFrom<MsgToUserTlv<'_>> for ProxyPutCancelMessage {
+    type Error = ReservedMessageReadError;
+
+    fn try_from(msg_to_user: MsgToUserTlv<'_>) -> Result<Self, Self::Error> {
+        msg_to_user.reserved_msg_params(ReservedMessageType::ProxyPutCancel)?;
+        Ok(Self)
+    }
+}
+
+impl WritableTlv for ProxyPutCancelMessage {
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
+/// Originating transaction ID message.
+///
+/// Identifies the transaction which originated a reserved message exchange, for example the
+/// proxy put request a proxy put response belongs to.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OriginatingTransactionIdMessage {
+    source_entity_id: UnsignedByteField,
+    transaction_seq_num: UnsignedByteField,
+}
+
+impl OriginatingTransactionIdMessage {
+    /// Constructor for the originating transaction ID message.
+    pub fn new(
+        source_entity_id: UnsignedByteField,
+        transaction_seq_num: UnsignedByteField,
+    ) -> Result<Self, ReservedMessageCreationError> {
+        check_byte_field_width(source_entity_id.size())?;
+        check_byte_field_width(transaction_seq_num.size())
+            .map_err(ReservedMessageCreationError::InvalidTransactionSeqNum)?;
+        Ok(Self {
+            source_entity_id,
+            transaction_seq_num,
+        })
+    }
+
+    /// Read an originating transaction ID message from a raw message to user TLV.
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, ReservedMessageReadError> {
+        Self::try_from(MsgToUserTlv::from_bytes(buf)?)
+    }
+
+    /// Source entity ID of the originating transaction.
+    #[inline]
+    pub fn source_entity_id(&self) -> UnsignedByteField {
+        self.source_entity_id
+    }
+
+    /// Transaction sequence number of the originating transaction.
+    #[inline]
+    pub fn transaction_seq_num(&self) -> UnsignedByteField {
+        self.transaction_seq_num
+    }
+
+    /// Full written length.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        MsgToUserTlv::full_len_for_reserved_cfdp_message(self.payload_len())
+    }
+
+    #[inline]
+    fn payload_len(&self) -> usize {
+        // One byte for both length fields.
+        1 + self.source_entity_id.size() + self.transaction_seq_num.size()
+    }
+
+    /// Write the originating transaction ID message into a raw byte buffer.
+    ///
+    /// Returns the number of bytes written into the provided buffer.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let mut current_index = write_reserved_msg_header(
+            buf,
+            ReservedMessageType::OriginatingTransactionId,
+            self.payload_len(),
+        )?;
+        // Same encoding as the length fields in the PDU header: the lengths minus one, each in
+        // a 3 bit field preceded by a spare bit.
+        buf[current_index] = (((self.source_entity_id.size() - 1) as u8) << 4)
+            | ((self.transaction_seq_num.size() - 1) as u8);
+        current_index += 1;
+        current_index += self
+            .source_entity_id
+            .write_to_slice_be(&mut buf[current_index..])?;
+        current_index += self
+            .transaction_seq_num
+            .write_to_slice_be(&mut buf[current_index..])?;
+        Ok(current_index)
+    }
+
+    /// Write the message to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
+}
+
+impl TryFrom<MsgToUserTlv<'_>> for OriginatingTransactionIdMessage {
+    type Error = ReservedMessageReadError;
+
+    fn try_from(msg_to_user: MsgToUserTlv<'_>) -> Result<Self, Self::Error> {
+        let params =
+            msg_to_user.reserved_msg_params(ReservedMessageType::OriginatingTransactionId)?;
+        let lengths = read_single_byte_param(params)?;
+        let entity_id_len = (((lengths >> 4) & 0b111) + 1) as usize;
+        let seq_num_len = ((lengths & 0b111) + 1) as usize;
+        check_byte_field_width(entity_id_len)?;
+        check_byte_field_width(seq_num_len)
+            .map_err(ReservedMessageReadError::InvalidTransactionSeqNum)?;
+        let expected_len = 1 + entity_id_len + seq_num_len;
+        if params.len() < expected_len {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: params.len(),
+                expected: expected_len,
+            }
+            .into());
+        }
+        let source_entity_id =
+            UnsignedByteField::new_from_be_bytes(entity_id_len, &params[1..1 + entity_id_len])?;
+        let transaction_seq_num =
+            UnsignedByteField::new_from_be_bytes(seq_num_len, &params[1 + entity_id_len..])
+                .map_err(ReservedMessageReadError::InvalidTransactionSeqNum)?;
+        Ok(Self {
+            source_entity_id,
+            transaction_seq_num,
+        })
+    }
+}
+
+impl WritableTlv for OriginatingTransactionIdMessage {
     fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.write_to_slice(buf)
     }
@@ -1033,6 +1384,25 @@ mod tests {
         let written = response.write_to_slice(&mut buf).unwrap();
         assert_eq!(WritableTlv::len_written(&response), written);
         assert_eq!(WritableTlv::to_vec(&response), buf[..written]);
+
+        let transmission_mode = ProxyTransmissionModeMessage::new(TransmissionMode::Acknowledged);
+        let written = transmission_mode.write_to_slice(&mut buf).unwrap();
+        assert_eq!(WritableTlv::len_written(&transmission_mode), written);
+        assert_eq!(WritableTlv::to_vec(&transmission_mode), buf[..written]);
+
+        let closure_request = ProxyClosureRequestMessage::new(true);
+        let written = closure_request.write_to_slice(&mut buf).unwrap();
+        assert_eq!(WritableTlv::len_written(&closure_request), written);
+        assert_eq!(WritableTlv::to_vec(&closure_request), buf[..written]);
+
+        let written = ProxyPutCancelMessage.write_to_slice(&mut buf).unwrap();
+        assert_eq!(WritableTlv::len_written(&ProxyPutCancelMessage), written);
+        assert_eq!(WritableTlv::to_vec(&ProxyPutCancelMessage), buf[..written]);
+
+        let transaction_id = originating_transaction_id();
+        let written = transaction_id.write_to_slice(&mut buf).unwrap();
+        assert_eq!(WritableTlv::len_written(&transaction_id), written);
+        assert_eq!(WritableTlv::to_vec(&transaction_id), buf[..written]);
     }
 
     #[test]
@@ -1096,5 +1466,344 @@ mod tests {
         };
         assert_eq!(value, &[1, 2, 3, 4]);
         assert_eq!(raw_data, Some(&buf[..]));
+    }
+
+    #[test]
+    fn test_proxy_transmission_mode_serialization() {
+        let msg = ProxyTransmissionModeMessage::new(TransmissionMode::Unacknowledged);
+        let mut buf: [u8; 16] = [0; 16];
+        let written = msg.write_to_slice(&mut buf).unwrap();
+        assert_eq!(written, msg.len_written());
+        assert_eq!(
+            &buf[..written],
+            &[
+                TlvType::MsgToUser as u8,
+                6,
+                b'c',
+                b'f',
+                b'd',
+                b'p',
+                0x04,
+                0x01
+            ]
+        );
+    }
+
+    #[test]
+    fn test_proxy_transmission_mode_round_trip() {
+        for mode in [
+            TransmissionMode::Acknowledged,
+            TransmissionMode::Unacknowledged,
+        ] {
+            let msg = ProxyTransmissionModeMessage::new(mode);
+            let mut buf: [u8; 16] = [0; 16];
+            let written = msg.write_to_slice(&mut buf).unwrap();
+            let read_back = ProxyTransmissionModeMessage::from_bytes(&buf[..written]).unwrap();
+            assert_eq!(read_back, msg);
+            assert_eq!(read_back.transmission_mode(), mode);
+        }
+    }
+
+    #[test]
+    fn test_proxy_transmission_mode_spare_bits_ignored() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x04\xfe").unwrap();
+        assert_eq!(
+            ProxyTransmissionModeMessage::try_from(msg_to_user)
+                .unwrap()
+                .transmission_mode(),
+            TransmissionMode::Acknowledged
+        );
+    }
+
+    #[test]
+    fn test_proxy_transmission_mode_missing_param() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x04").unwrap();
+        assert_eq!(
+            ProxyTransmissionModeMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::ByteConversion(
+                ByteConversionError::FromSliceTooSmall {
+                    found: 0,
+                    expected: 1
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_proxy_transmission_mode_wrong_type() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0b\x01").unwrap();
+        assert_eq!(
+            ProxyTransmissionModeMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::UnexpectedMessageType {
+                found: ReservedMessageType::ProxyClosureRequest,
+                expected: ReservedMessageType::ProxyTransmissionMode,
+            })
+        );
+    }
+
+    #[test]
+    fn test_proxy_closure_request_serialization() {
+        let msg = ProxyClosureRequestMessage::new(true);
+        let mut buf: [u8; 16] = [0; 16];
+        let written = msg.write_to_slice(&mut buf).unwrap();
+        assert_eq!(written, msg.len_written());
+        assert_eq!(
+            &buf[..written],
+            &[
+                TlvType::MsgToUser as u8,
+                6,
+                b'c',
+                b'f',
+                b'd',
+                b'p',
+                0x0B,
+                0x01
+            ]
+        );
+    }
+
+    #[test]
+    fn test_proxy_closure_request_round_trip() {
+        for closure_requested in [false, true] {
+            let msg = ProxyClosureRequestMessage::new(closure_requested);
+            let mut buf: [u8; 16] = [0; 16];
+            let written = msg.write_to_slice(&mut buf).unwrap();
+            let read_back = ProxyClosureRequestMessage::from_bytes(&buf[..written]).unwrap();
+            assert_eq!(read_back, msg);
+            assert_eq!(read_back.closure_requested(), closure_requested);
+        }
+    }
+
+    #[test]
+    fn test_proxy_closure_request_spare_bits_ignored() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0b\xfe").unwrap();
+        assert!(
+            !ProxyClosureRequestMessage::try_from(msg_to_user)
+                .unwrap()
+                .closure_requested()
+        );
+    }
+
+    #[test]
+    fn test_proxy_closure_request_missing_param() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0b").unwrap();
+        assert_eq!(
+            ProxyClosureRequestMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::ByteConversion(
+                ByteConversionError::FromSliceTooSmall {
+                    found: 0,
+                    expected: 1
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_cancel_serialization() {
+        let msg = ProxyPutCancelMessage;
+        let mut buf: [u8; 16] = [0; 16];
+        let written = msg.write_to_slice(&mut buf).unwrap();
+        assert_eq!(written, msg.len_written());
+        assert_eq!(
+            &buf[..written],
+            &[TlvType::MsgToUser as u8, 5, b'c', b'f', b'd', b'p', 0x09]
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_cancel_round_trip() {
+        let mut buf: [u8; 16] = [0; 16];
+        let written = ProxyPutCancelMessage.write_to_slice(&mut buf).unwrap();
+        assert_eq!(
+            ProxyPutCancelMessage::from_bytes(&buf[..written]),
+            Ok(ProxyPutCancelMessage)
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_cancel_wrong_type() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x07\x00").unwrap();
+        assert_eq!(
+            ProxyPutCancelMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::UnexpectedMessageType {
+                found: ReservedMessageType::ProxyPutResponse,
+                expected: ReservedMessageType::ProxyPutCancel,
+            })
+        );
+    }
+
+    #[test]
+    fn test_proxy_put_cancel_buf_too_small() {
+        let mut buf: [u8; 6] = [0; 6];
+        assert_eq!(
+            ProxyPutCancelMessage.write_to_slice(&mut buf),
+            Err(ByteConversionError::ToSliceTooSmall {
+                found: 6,
+                expected: 7
+            })
+        );
+    }
+
+    fn originating_transaction_id() -> OriginatingTransactionIdMessage {
+        OriginatingTransactionIdMessage::new(
+            UnsignedByteField::new(2, 0x0102),
+            UnsignedByteField::new(4, 0x0A0B_0C0D),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_originating_transaction_id_serialization() {
+        let msg = originating_transaction_id();
+        let mut buf: [u8; 32] = [0; 32];
+        let written = msg.write_to_slice(&mut buf).unwrap();
+        assert_eq!(written, msg.len_written());
+        assert_eq!(
+            &buf[..written],
+            &[
+                TlvType::MsgToUser as u8,
+                12,
+                b'c',
+                b'f',
+                b'd',
+                b'p',
+                0x0A,
+                0b0001_0011,
+                0x01,
+                0x02,
+                0x0A,
+                0x0B,
+                0x0C,
+                0x0D
+            ]
+        );
+    }
+
+    #[test]
+    fn test_originating_transaction_id_round_trip() {
+        for (entity_id_width, seq_num_width) in [(1, 1), (1, 8), (2, 4), (4, 2), (8, 1), (8, 8)] {
+            let msg = OriginatingTransactionIdMessage::new(
+                UnsignedByteField::new(entity_id_width, 5),
+                UnsignedByteField::new(seq_num_width, 42),
+            )
+            .unwrap();
+            let mut buf: [u8; 32] = [0; 32];
+            let written = msg.write_to_slice(&mut buf).unwrap();
+            let read_back = OriginatingTransactionIdMessage::from_bytes(&buf[..written]).unwrap();
+            assert_eq!(read_back, msg);
+            assert_eq!(
+                read_back.source_entity_id(),
+                UnsignedByteField::new(entity_id_width, 5)
+            );
+            assert_eq!(
+                read_back.transaction_seq_num(),
+                UnsignedByteField::new(seq_num_width, 42)
+            );
+        }
+    }
+
+    #[test]
+    fn test_originating_transaction_id_invalid_widths() {
+        assert_eq!(
+            OriginatingTransactionIdMessage::new(
+                UnsignedByteField::new(3, 0),
+                UnsignedByteField::new(2, 0)
+            ),
+            Err(ReservedMessageCreationError::InvalidEntityId(
+                UnsignedByteFieldError::InvalidWidth {
+                    found: 3,
+                    expected: None
+                }
+            ))
+        );
+        assert_eq!(
+            OriginatingTransactionIdMessage::new(
+                UnsignedByteField::new(2, 0),
+                UnsignedByteField::new(0, 0)
+            ),
+            Err(ReservedMessageCreationError::InvalidTransactionSeqNum(
+                UnsignedByteFieldError::InvalidWidth {
+                    found: 0,
+                    expected: None
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_originating_transaction_id_reader_invalid_widths() {
+        // Entity ID length field 2 encodes a width of 3.
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0a\x20\x01\x02\x03\x04").unwrap();
+        assert_eq!(
+            OriginatingTransactionIdMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::InvalidEntityId(
+                UnsignedByteFieldError::InvalidWidth {
+                    found: 3,
+                    expected: None
+                }
+            ))
+        );
+        // Sequence number length field 4 encodes a width of 5.
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0a\x04\x01\x01\x02\x03\x04\x05").unwrap();
+        assert_eq!(
+            OriginatingTransactionIdMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::InvalidTransactionSeqNum(
+                UnsignedByteFieldError::InvalidWidth {
+                    found: 5,
+                    expected: None
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_originating_transaction_id_spare_bits_ignored() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0a\x88\x01\x02").unwrap();
+        let msg = OriginatingTransactionIdMessage::try_from(msg_to_user).unwrap();
+        assert_eq!(msg.source_entity_id(), UnsignedByteField::new(1, 1));
+        assert_eq!(msg.transaction_seq_num(), UnsignedByteField::new(1, 2));
+    }
+
+    #[test]
+    fn test_originating_transaction_id_truncated() {
+        // Announces a 2 byte entity ID and a 4 byte sequence number, but only 3 bytes follow.
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0a\x13\x01\x02\x03").unwrap();
+        assert_eq!(
+            OriginatingTransactionIdMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::ByteConversion(
+                ByteConversionError::FromSliceTooSmall {
+                    found: 4,
+                    expected: 7
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_originating_transaction_id_missing_param() {
+        let msg_to_user = MsgToUserTlv::new(b"cfdp\x0a").unwrap();
+        assert_eq!(
+            OriginatingTransactionIdMessage::try_from(msg_to_user),
+            Err(ReservedMessageReadError::ByteConversion(
+                ByteConversionError::FromSliceTooSmall {
+                    found: 0,
+                    expected: 1
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_originating_transaction_id_wrong_type() {
+        let mut buf: [u8; 16] = [0; 16];
+        let written = ProxyPutCancelMessage.write_to_slice(&mut buf).unwrap();
+        assert_eq!(
+            OriginatingTransactionIdMessage::from_bytes(&buf[..written]),
+            Err(ReservedMessageReadError::UnexpectedMessageType {
+                found: ReservedMessageType::ProxyPutCancel,
+                expected: ReservedMessageType::OriginatingTransactionId,
+            })
+        );
+>>>>>>> 2392703 (more proxy message support)
     }
 }
