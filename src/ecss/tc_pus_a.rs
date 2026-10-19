@@ -226,7 +226,7 @@ impl PusTcSecondaryHeader {
         current_idx += 3;
         if let Some(source_id) = self.source_id {
             current_idx += source_id
-                .write_to_be_bytes(&mut buf[current_idx..current_idx + source_id.size()])
+                .write_to_slice_be(&mut buf[current_idx..current_idx + source_id.size()])
                 .unwrap();
         }
         if self.spare_bytes > 0 {
@@ -672,7 +672,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         app_data_len: usize,
     ) -> Result<Self, ByteConversionError> {
         let mut curr_idx = 0;
-        sp_header.write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
+        sp_header.write_to_slice(&mut buf[0..CCSDS_HEADER_LEN])?;
         curr_idx += CCSDS_HEADER_LEN;
         curr_idx +=
             sec_header.write_to_slice(&mut buf[curr_idx..curr_idx + sec_header.written_len()])?;

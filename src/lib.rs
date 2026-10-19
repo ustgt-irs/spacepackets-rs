@@ -56,7 +56,7 @@
 //! let sp_header = SpHeader::new_for_unseg_tc(u11::new(0x42), u14::new(12), 1);
 //! println!("{:?}", sp_header);
 //! let mut ccsds_buf: [u8; 32] = [0; 32];
-//! sp_header.write_to_be_bytes(&mut ccsds_buf).expect("Writing CCSDS TC header failed");
+//! sp_header.write_to_slice(&mut ccsds_buf).expect("Writing CCSDS TC header failed");
 //! println!("{:x?}", &ccsds_buf[0..6]);
 //! ```
 #![no_std]
@@ -696,12 +696,8 @@ impl SpacePacketHeader {
         Ok((Self::from(zc_header), &buf[Self::LENGTH..]))
     }
 
-    /// Write the header to a raw buffer using big endian format. This function returns the
-    /// remaining part of the passed slice starting past the written CCSDS header.
-    pub fn write_to_be_bytes<'a>(
-        &self,
-        buf: &'a mut [u8],
-    ) -> Result<&'a mut [u8], ByteConversionError> {
+    /// Write the header to a raw buffer. Returns the written length on success.
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < Self::LENGTH {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -711,6 +707,20 @@ impl SpacePacketHeader {
         let zc_header: zc::SpHeader = zc::SpHeader::from(*self);
         // Unwrap okay, this can not fail.
         zc_header.write_to(&mut buf[0..Self::LENGTH]).unwrap();
+        Ok(Self::LENGTH)
+    }
+
+    /// Write the header to a raw buffer. Returns the remaining part of the passed slice starting
+    /// past the written CCSDS header.
+    #[deprecated(
+        since = "0.19.0",
+        note = "use write_to_slice instead, which returns the written length"
+    )]
+    pub fn write_to_be_bytes<'a>(
+        &self,
+        buf: &'a mut [u8],
+    ) -> Result<&'a mut [u8], ByteConversionError> {
+        self.write_to_slice(buf)?;
         Ok(&mut buf[Self::LENGTH..])
     }
 
@@ -719,7 +729,7 @@ impl SpacePacketHeader {
     pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
         let mut vec = alloc::vec![0; Self::LENGTH];
         // This can not fail.
-        self.write_to_be_bytes(&mut vec[..]).unwrap();
+        self.write_to_slice(&mut vec[..]).unwrap();
         vec
     }
 }
@@ -1051,7 +1061,7 @@ impl CcsdsPacketCreatorWithReservedData<'_> {
     /// checksum when configured to do so.
     pub fn finish(self) -> usize {
         self.sp_header
-            .write_to_be_bytes(&mut self.buf[0..CCSDS_HEADER_LEN])
+            .write_to_slice(&mut self.buf[0..CCSDS_HEADER_LEN])
             .unwrap();
         let len = self.packet_len();
         match self.checksum {
@@ -1235,7 +1245,7 @@ impl CcsdsPacketCreatorCommon {
             });
         }
         self.sp_header
-            .write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
+            .write_to_slice(&mut buf[0..CCSDS_HEADER_LEN])?;
         buf[CCSDS_HEADER_LEN..CCSDS_HEADER_LEN + packet_data.len()].copy_from_slice(packet_data);
         match self.checksum {
             Some(ChecksumType::WithCrc16) => {
@@ -2213,6 +2223,27 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn test_sp_header_write_to_slice() {
+        let sp_header = SpHeader::new_for_unseg_tc(u11::new(0x42), u14::new(25), 1);
+        let mut buf: [u8; 8] = [0; 8];
+        assert_eq!(
+            sp_header.write_to_slice(&mut buf).unwrap(),
+            SpHeader::LENGTH
+        );
+        assert_eq!(&buf[..SpHeader::LENGTH], sp_header.to_vec());
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_sp_header_write_to_be_bytes_returns_remaining_slice() {
+        let sp_header = SpHeader::new_for_unseg_tc(u11::new(0x42), u14::new(25), 1);
+        let mut buf: [u8; 8] = [0; 8];
+        let remaining = sp_header.write_to_be_bytes(&mut buf).unwrap();
+        assert_eq!(remaining.len(), 2);
+        assert_eq!(&buf[..SpHeader::LENGTH], sp_header.to_vec());
+    }
+
+    #[test]
     fn test_ccsds_size_function() {
         assert_eq!(ccsds_packet_len_for_user_data_len(1, None).unwrap(), 7);
         // Special case: One dummy byte is required.
@@ -2937,7 +2968,7 @@ pub(crate) mod tests {
         let sph = SpacePacketHeader::new_from_apid(u11::new(0x01));
         let mut buf: [u8; 5] = [0; 5];
         assert_eq!(
-            sph.write_to_be_bytes(&mut buf).unwrap_err(),
+            sph.write_to_slice(&mut buf).unwrap_err(),
             ByteConversionError::ToSliceTooSmall {
                 found: 5,
                 expected: 6

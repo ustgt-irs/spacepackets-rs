@@ -504,15 +504,15 @@ impl PduHeader {
             | ((self.seg_metadata_flag as u8) << 3)
             | ((self.pdu_conf.transaction_seq_num.size() - 1) as u8);
         current_idx += 1;
-        self.pdu_conf.source_entity_id.write_to_be_bytes(
+        self.pdu_conf.source_entity_id.write_to_slice_be(
             &mut buf[current_idx..current_idx + self.pdu_conf.source_entity_id.size()],
         )?;
         current_idx += self.pdu_conf.source_entity_id.size();
-        self.pdu_conf.transaction_seq_num.write_to_be_bytes(
+        self.pdu_conf.transaction_seq_num.write_to_slice_be(
             &mut buf[current_idx..current_idx + self.pdu_conf.transaction_seq_num.size()],
         )?;
         current_idx += self.pdu_conf.transaction_seq_num.size();
-        self.pdu_conf.dest_entity_id.write_to_be_bytes(
+        self.pdu_conf.dest_entity_id.write_to_slice_be(
             &mut buf[current_idx..current_idx + self.pdu_conf.dest_entity_id.size()],
         )?;
         current_idx += self.pdu_conf.dest_entity_id.size();

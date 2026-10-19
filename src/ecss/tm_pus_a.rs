@@ -241,7 +241,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             current_idx += 1;
         }
         if let Some(dest_id) = self.dest_id {
-            dest_id.write_to_be_bytes(&mut buf[current_idx..current_idx + dest_id.size()])?;
+            dest_id.write_to_slice_be(&mut buf[current_idx..current_idx + dest_id.size()])?;
             current_idx += dest_id.size();
         }
         buf[current_idx..current_idx + self.timestamp.len()].copy_from_slice(self.timestamp);
@@ -469,7 +469,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
             let mut dest_id_buf: [u8; core::mem::size_of::<u64>()] =
                 [0; core::mem::size_of::<u64>()];
             let len = dest_id
-                .write_to_be_bytes(&mut dest_id_buf)
+                .write_to_slice_be(&mut dest_id_buf)
                 .expect("buffer is maximum possible size; this operation cannot fail");
             digest.update(&dest_id_buf[0..len]);
         }
@@ -737,7 +737,7 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
         src_data_len: usize,
     ) -> Result<Self, ByteConversionError> {
         let mut curr_idx = 0;
-        sp_header.write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
+        sp_header.write_to_slice(&mut buf[0..CCSDS_HEADER_LEN])?;
         curr_idx += CCSDS_HEADER_LEN;
         curr_idx += sec_header.write_to_slice(&mut buf[CCSDS_HEADER_LEN..])?;
         let source_data_offset = curr_idx;
@@ -1171,7 +1171,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
             ));
         }
         dest_id
-            .write_to_be_bytes(&mut self.raw_tm[base_idx..base_idx + dest_id_len])
+            .write_to_slice_be(&mut self.raw_tm[base_idx..base_idx + dest_id_len])
             .unwrap();
         Ok(())
     }

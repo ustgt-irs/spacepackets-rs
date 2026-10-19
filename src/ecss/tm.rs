@@ -901,7 +901,7 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
         has_checksum: bool,
     ) -> Result<Self, ByteConversionError> {
         let mut curr_idx = 0;
-        sp_header.write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
+        sp_header.write_to_slice(&mut buf[0..CCSDS_HEADER_LEN])?;
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
         let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::try_from(sec_header).unwrap();

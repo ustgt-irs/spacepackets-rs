@@ -17,9 +17,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   `write_to_bytes_checksum_no_table` and `write_to_bytes_partially` variants, as well as
   `Lv::write_to_be_bytes` and `write_to_be_bytes` of the PUS A secondary headers.
   The old names are still available as deprecated aliases.
-  `UnsignedEnum::write_to_be_bytes` and `SpHeader::write_to_be_bytes` keep their names.
+- Added `SpHeader::write_to_slice`, which returns the written length like the other writers.
+  `SpHeader::write_to_be_bytes` is deprecated. It still returns the remaining slice.
+- Renamed `UnsignedEnum::write_to_be_bytes` to `UnsignedEnum::write_to_slice_be`. The old name is
+  still available as a deprecated alias.
 - `WritableTlv`, `WritablePduPacket`, `TimeWriter` and `WritablePusPacket` now require
-  `write_to_slice` (or `write_to_slice_no_checksum`) instead of `write_to_bytes`.
+  `write_to_slice` (or `write_to_slice_no_checksum`) instead of `write_to_bytes`, and
+  `UnsignedEnum` requires `write_to_slice_be` instead of `write_to_be_bytes`.
   External implementors of these traits need to rename their implementation.
   Overrides of the provided `WritablePusPacket::write_to_bytes` and
   `WritablePusPacket::write_to_bytes_checksum_no_table` methods must be moved to
@@ -42,7 +46,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   traits do not need to be imported for common use.
 - Inherent `value`, `len_value`, `len_full`, `is_empty` and `tlv_type_field` methods on `Tlv`
   and `TlvOwned`, and inherent `tlv_type_field` on the specific TLV types.
-- Inherent `size`, `value_raw`, `write_to_be_bytes` and `to_vec` methods on
+- Inherent `size`, `value_raw`, `write_to_slice_be` and `to_vec` methods on
   `UnsignedByteField`, `GenericUnsignedByteField` and `GenericEcssEnumWrapper`, so
   `UnsignedEnum` does not need to be imported.
 
