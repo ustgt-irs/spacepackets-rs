@@ -76,7 +76,13 @@ pub trait ReadableTlv {
 /// Writable TLV structure trait.
 pub trait WritableTlv {
     /// Write the TLV to bytes.
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
 
     /// Length of the written TLV.
     fn len_written(&self) -> usize;
@@ -85,7 +91,7 @@ pub trait WritableTlv {
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; self.len_written()];
-        self.write_to_bytes(&mut buf).unwrap();
+        self.write_to_slice(&mut buf).unwrap();
         buf
     }
 }
@@ -252,10 +258,10 @@ impl<'data> Tlv<'data> {
     }
 
     /// Write the TLV to a byte buffer.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         generic_len_check_data_serialization(buf, self.value().len(), MIN_TLV_LEN)?;
         buf[0] = self.tlv_type_field.into();
-        self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
+        self.lv.write_to_slice_no_len_check(&mut buf[1..]);
         Ok(self.len_full())
     }
 
@@ -280,8 +286,8 @@ impl ReadableTlv for Tlv<'_> {
 }
 
 impl WritableTlv for Tlv<'_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     #[inline]
@@ -338,12 +344,18 @@ pub mod alloc_mod {
         }
 
         /// Write to a byte slice.
-        pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
             generic_len_check_data_serialization(buf, self.data.len(), MIN_TLV_LEN)?;
             buf[0] = self.tlv_type_field.into();
             buf[1] = self.data.len() as u8;
             buf[2..2 + self.data.len()].copy_from_slice(&self.data);
             Ok(self.len_written())
+        }
+
+        /// Deprecated alias for [Self::write_to_slice].
+        #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+        pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+            self.write_to_slice(buf)
         }
 
         #[inline]
@@ -370,8 +382,8 @@ pub mod alloc_mod {
     }
 
     impl WritableTlv for TlvOwned {
-        fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-            self.write_to_bytes(buf)
+        fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+            self.write_to_slice(buf)
         }
 
         #[inline]
@@ -465,7 +477,7 @@ impl EntityIdTlv {
         Ok(Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).unwrap())
     }
 
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         Self::len_check(buf)?;
         buf[0] = TlvType::EntityId as u8;
         buf[1] = self.entity_id.size() as u8;
@@ -479,8 +491,8 @@ impl EntityIdTlv {
 }
 
 impl WritableTlv for EntityIdTlv {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     #[inline]
@@ -743,7 +755,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         })
     }
 
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_full() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -755,12 +767,12 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         buf[2] = (self.base.action_code as u8) << 4;
         let mut current_idx = 3;
         // Length checks were already performed.
-        self.base.first_name.write_to_be_bytes_no_len_check(
+        self.base.first_name.write_to_slice_no_len_check(
             &mut buf[current_idx..current_idx + self.base.first_name.len_full()],
         );
         current_idx += self.base.first_name.len_full();
         if let Some(second_name) = self.base.second_name {
-            second_name.write_to_be_bytes_no_len_check(
+            second_name.write_to_slice_no_len_check(
                 &mut buf[current_idx..current_idx + second_name.len_full()],
             );
             current_idx += second_name.len_full();
@@ -775,8 +787,8 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
 }
 
 impl WritableTlv for FilestoreRequestTlv<'_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     #[inline]
@@ -956,7 +968,7 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         })
     }
 
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_full() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -968,16 +980,16 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         buf[2] = ((self.base.action_code as u8) << 4) | (self.status_code & 0b1111);
         let mut current_idx = 3;
         // Length checks were already performed.
-        self.base.first_name.write_to_be_bytes_no_len_check(
+        self.base.first_name.write_to_slice_no_len_check(
             &mut buf[current_idx..current_idx + self.base.first_name.len_full()],
         );
         current_idx += self.base.first_name.len_full();
         if let Some(second_name) = self.base.second_name {
-            current_idx += second_name.write_to_be_bytes_no_len_check(
+            current_idx += second_name.write_to_slice_no_len_check(
                 &mut buf[current_idx..current_idx + second_name.len_full()],
             );
         }
-        current_idx += self.filestore_message.write_to_be_bytes_no_len_check(
+        current_idx += self.filestore_message.write_to_slice_no_len_check(
             &mut buf[current_idx..current_idx + self.filestore_message.len_full()],
         );
         Ok(current_idx)
@@ -989,8 +1001,8 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
 }
 
 impl WritableTlv for FilestoreResponseTlv<'_, '_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     #[inline]
@@ -1063,7 +1075,7 @@ mod tests {
         assert!(tlv_res.is_ok());
         let tlv_res = tlv_res.unwrap();
         let mut ser_buf: [u8; 4] = [0; 4];
-        assert!(tlv_res.write_to_bytes(&mut ser_buf).is_ok());
+        assert!(tlv_res.write_to_slice(&mut ser_buf).is_ok());
         assert_eq!(ser_buf[0], TlvType::EntityId as u8);
         assert_eq!(ser_buf[1], 1);
         assert_eq!(ser_buf[2], 5);
@@ -1095,7 +1107,7 @@ mod tests {
         let entity_id = UbfU16::new(0x0102);
         let entity_id_tlv = EntityIdTlv::new(entity_id.into());
         let mut buf: [u8; 16] = [0; 16];
-        let written_len = entity_id_tlv.write_to_bytes(&mut buf).unwrap();
+        let written_len = entity_id_tlv.write_to_slice(&mut buf).unwrap();
         assert_eq!(written_len, entity_id_tlv.len_full());
         assert_eq!(entity_id_tlv.len_value(), 2);
         assert!(entity_id_tlv.is_standard_tlv());
@@ -1122,7 +1134,7 @@ mod tests {
         let entity_id = UbfU16::new(0x0102);
         let entity_id_tlv = EntityIdTlv::new(entity_id.into());
         let mut buf: [u8; 16] = [0; 16];
-        let _ = entity_id_tlv.write_to_bytes(&mut buf).unwrap();
+        let _ = entity_id_tlv.write_to_slice(&mut buf).unwrap();
         let entity_tlv_from_raw =
             EntityIdTlv::from_bytes(&buf).expect("creating entity ID TLV failed");
         assert_eq!(entity_tlv_from_raw, entity_id_tlv);
@@ -1146,7 +1158,7 @@ mod tests {
     fn test_empty_serialization() {
         let tlv_empty = Tlv::new_empty(TlvType::MsgToUser);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(tlv_empty.write_to_bytes(&mut buf).is_ok());
+        assert!(tlv_empty.write_to_slice(&mut buf).is_ok());
         assert_eq!(buf[0], TlvType::MsgToUser as u8);
         assert_eq!(buf[1], 0);
     }
@@ -1175,7 +1187,7 @@ mod tests {
         let fs_request =
             FilestoreRequestTlv::new_create_file(Lv::new_from_str(TLV_TEST_STR_0).unwrap())
                 .unwrap();
-        let error = fs_request.write_to_bytes(&mut buf);
+        let error = fs_request.write_to_slice(&mut buf);
         assert!(error.is_err());
         let error = error.unwrap_err();
         if let ByteConversionError::ToSliceTooSmall { found, expected } = error {
@@ -1367,7 +1379,7 @@ mod tests {
     fn test_fs_request_serialization_one_file() {
         let req = generic_fs_request_test_one_file(FilestoreActionCode::CreateFile);
         let mut buf: [u8; 64] = [0; 64];
-        let res = req.write_to_bytes(&mut buf);
+        let res = req.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, 3 + 1 + TLV_TEST_STR_0.len());
@@ -1383,7 +1395,7 @@ mod tests {
     fn test_fs_request_deserialization_one_file() {
         let req = generic_fs_request_test_one_file(FilestoreActionCode::CreateFile);
         let mut buf: [u8; 64] = [0; 64];
-        let res = req.write_to_bytes(&mut buf);
+        let res = req.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let req_conv_back = FilestoreRequestTlv::from_bytes(&buf);
         assert!(req_conv_back.is_ok());
@@ -1395,7 +1407,7 @@ mod tests {
     fn test_fs_request_serialization_two_files() {
         let req = generic_fs_request_test_two_files(FilestoreActionCode::RenameFile);
         let mut buf: [u8; 64] = [0; 64];
-        let res = req.write_to_bytes(&mut buf);
+        let res = req.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, req.len_full());
@@ -1419,7 +1431,7 @@ mod tests {
     fn test_fs_request_deserialization_two_files() {
         let req = generic_fs_request_test_two_files(FilestoreActionCode::RenameFile);
         let mut buf: [u8; 64] = [0; 64];
-        req.write_to_bytes(&mut buf).unwrap();
+        req.write_to_slice(&mut buf).unwrap();
         let req_conv_back = FilestoreRequestTlv::from_bytes(&buf);
         assert!(req_conv_back.is_ok());
         let req_conv_back = req_conv_back.unwrap();
@@ -1474,7 +1486,7 @@ mod tests {
         )
         .expect("creating response failed");
         let mut buf: [u8; 32] = [0; 32];
-        let written_len = response.write_to_bytes(&mut buf).unwrap();
+        let written_len = response.write_to_slice(&mut buf).unwrap();
         assert_eq!(written_len, 2 + 1 + lv_0.len_full() + 1);
         assert_eq!(buf[0], TlvType::FilestoreResponse as u8);
         assert_eq!(buf[1], written_len as u8 - 2);
@@ -1501,7 +1513,7 @@ mod tests {
         )
         .expect("creating response failed");
         let mut buf: [u8; 32] = [0; 32];
-        response.write_to_bytes(&mut buf).unwrap();
+        response.write_to_slice(&mut buf).unwrap();
         let response_read_back = FilestoreResponseTlv::from_bytes(&buf).unwrap();
         assert_eq!(response_read_back, response);
     }
@@ -1545,7 +1557,7 @@ mod tests {
         let entity_id = UbfU16::new(0x0102);
         let entity_id_tlv = EntityIdTlv::new(entity_id.into());
         let mut buf: [u8; 32] = [0; 32];
-        entity_id_tlv.write_to_bytes(&mut buf).unwrap();
+        entity_id_tlv.write_to_slice(&mut buf).unwrap();
         buf[1] = 12;
         let error = EntityIdTlv::from_bytes(&buf);
         assert!(error.is_err());

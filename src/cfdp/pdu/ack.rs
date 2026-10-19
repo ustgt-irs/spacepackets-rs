@@ -169,7 +169,7 @@ impl AckPdu {
     }
 
     /// Write [Self] to the provided buffer and returns the written size.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -178,7 +178,7 @@ impl AckPdu {
             }
             .into());
         }
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        let mut current_idx = self.pdu_header.write_to_slice(buf)?;
         buf[current_idx] = FileDirectiveType::Ack as u8;
         current_idx += 1;
 
@@ -195,6 +195,12 @@ impl AckPdu {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     /// Length of the written PDU in bytes.
@@ -216,8 +222,8 @@ impl CfdpPdu for AckPdu {
 }
 
 impl WritablePduPacket for AckPdu {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     fn len_written(&self) -> usize {
@@ -277,7 +283,7 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new_for_finished_pdu(pdu_header, condition_code, transaction_status);
         let mut buf: [u8; 64] = [0; 64];
-        let res = ack_pdu.write_to_bytes(&mut buf);
+        let res = ack_pdu.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, ack_pdu.len_written());
@@ -310,7 +316,7 @@ mod tests {
         if let Err(PduError::ByteConversion(ByteConversionError::ToSliceTooSmall {
             found,
             expected,
-        })) = ack_pdu.write_to_bytes(&mut [0; 5])
+        })) = ack_pdu.write_to_slice(&mut [0; 5])
         {
             assert_eq!(found, 5);
             assert_eq!(expected, ack_pdu.len_written());

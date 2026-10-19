@@ -72,7 +72,7 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
         1 + self.metadata.map_or(0, |meta| meta.len())
     }
 
-    pub(crate) fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub(crate) fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_written() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -145,10 +145,10 @@ impl FdPduBase<'_> {
         len
     }
 
-    fn write_common_fields_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+    fn write_common_fields_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        let mut current_idx = self.pdu_header.write_to_slice(buf)?;
         if let Some(segment_metadata) = self.segment_metadata {
-            current_idx += segment_metadata.write_to_bytes(&mut buf[current_idx..])?;
+            current_idx += segment_metadata.write_to_slice(&mut buf[current_idx..])?;
         }
         current_idx += write_fss_field(
             self.pdu_header.common_pdu_conf().file_flag,
@@ -278,7 +278,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
     }
 
     /// Write [Self] to the provided buffer and returns the written size.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         if buf.len() < self.len_written() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -287,13 +287,19 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             .into());
         }
 
-        let mut current_idx = self.common.write_common_fields_to_bytes(buf)?;
+        let mut current_idx = self.common.write_common_fields_to_slice(buf)?;
         buf[current_idx..current_idx + self.file_data.len()].copy_from_slice(self.file_data);
         current_idx += self.file_data.len();
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     /// Length of the written PDU.
@@ -314,8 +320,8 @@ impl CfdpPdu for FileDataPdu<'_, '_> {
 }
 
 impl WritablePduPacket for FileDataPdu<'_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     fn len_written(&self) -> usize {
@@ -392,7 +398,7 @@ impl<'seg_meta> FileDataPduCreatorWithReservedDatafield<'seg_meta> {
     /// It returns a [FileDataPduCreatorWithUnwrittenData] which provides a mutable slice to
     /// the reserved file data field. The user can read file data into this field directly and
     /// then finish the PDU creation using the [FileDataPduCreatorWithUnwrittenData::finish] call.
-    pub fn write_to_bytes_partially<'buf>(
+    pub fn write_to_slice_partially<'buf>(
         &self,
         buf: &'buf mut [u8],
     ) -> Result<FileDataPduCreatorWithUnwrittenData<'buf>, PduError> {
@@ -403,7 +409,7 @@ impl<'seg_meta> FileDataPduCreatorWithReservedDatafield<'seg_meta> {
             }
             .into());
         }
-        let mut current_idx = self.common.write_common_fields_to_bytes(buf)?;
+        let mut current_idx = self.common.write_common_fields_to_slice(buf)?;
         let file_data_offset = current_idx as u64;
         current_idx += self.file_data_len as usize;
         if self.crc_flag() == CrcFlag::WithCrc {
@@ -415,6 +421,15 @@ impl<'seg_meta> FileDataPduCreatorWithReservedDatafield<'seg_meta> {
             file_data_len: self.file_data_len,
             needs_crc: self.crc_flag() == CrcFlag::WithCrc,
         })
+    }
+
+    /// Deprecated alias for [Self::write_to_slice_partially].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice_partially instead")]
+    pub fn write_to_bytes_partially<'buf>(
+        &self,
+        buf: &'buf mut [u8],
+    ) -> Result<FileDataPduCreatorWithUnwrittenData<'buf>, PduError> {
+        self.write_to_slice_partially(buf)
     }
 }
 
@@ -428,7 +443,7 @@ impl CfdpPdu for FileDataPduCreatorWithReservedDatafield<'_> {
     }
 }
 
-/// This structure is created with [FileDataPduCreatorWithReservedDatafield::write_to_bytes_partially]
+/// This structure is created with [FileDataPduCreatorWithReservedDatafield::write_to_slice_partially]
 /// and provides an API to read file data from the virtual filesystem into the file data PDU buffer
 /// directly.
 ///
@@ -528,7 +543,7 @@ mod tests {
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
         let mut buf: [u8; 32] = [0; 32];
-        let res = fd_pdu.write_to_bytes(&mut buf);
+        let res = fd_pdu.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(
@@ -560,7 +575,7 @@ mod tests {
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
         let mut buf: [u8; 64] = [0; 64];
-        let written = fd_pdu.write_to_bytes(&mut buf).unwrap();
+        let written = fd_pdu.write_to_slice(&mut buf).unwrap();
         let pdu_vec = fd_pdu.to_vec().unwrap();
         assert_eq!(buf[0..written], pdu_vec);
     }
@@ -573,7 +588,7 @@ mod tests {
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
         let mut buf: [u8; 32] = [0; 32];
-        fd_pdu.write_to_bytes(&mut buf).unwrap();
+        fd_pdu.write_to_slice(&mut buf).unwrap();
         let fd_pdu_read_back = FileDataPdu::from_bytes(&buf);
         assert!(fd_pdu_read_back.is_ok());
         let fd_pdu_read_back = fd_pdu_read_back.unwrap();
@@ -589,7 +604,7 @@ mod tests {
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
         let mut buf: [u8; 64] = [0; 64];
-        let written = fd_pdu.write_to_bytes(&mut buf).unwrap();
+        let written = fd_pdu.write_to_slice(&mut buf).unwrap();
         assert_eq!(written, fd_pdu.len_written());
         let finished_pdu_from_raw = FileDataPdu::from_bytes(&buf).unwrap();
         assert_eq!(finished_pdu_from_raw, fd_pdu);
@@ -631,7 +646,7 @@ mod tests {
         );
         let mut buf: [u8; 32] = [0; 32];
         fd_pdu
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .expect("writing FD PDU failed");
         let mut current_idx = fd_pdu.pdu_header().header_len();
         assert_eq!(
@@ -683,7 +698,7 @@ mod tests {
         let fd_pdu = FileDataPdu::new_with_seg_metadata(pdu_header, segment_meta, 10, &file_data);
         let mut buf: [u8; 32] = [0; 32];
         fd_pdu
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .expect("writing FD PDU failed");
         let fd_pdu_read_back = FileDataPdu::from_bytes(&buf);
         assert!(fd_pdu_read_back.is_ok());
@@ -739,7 +754,7 @@ mod tests {
         );
         let mut write_buf: [u8; 64] = [0; 64];
         let mut pdu_unwritten = fd_pdu
-            .write_to_bytes_partially(&mut write_buf)
+            .write_to_slice_partially(&mut write_buf)
             .expect("partial write failed");
         pdu_unwritten
             .file_data_field_mut()
@@ -767,7 +782,7 @@ mod tests {
         );
         let mut write_buf: [u8; 64] = [0; 64];
         let mut pdu_unwritten = fd_pdu
-            .write_to_bytes_partially(&mut write_buf)
+            .write_to_slice_partially(&mut write_buf)
             .expect("partial write failed");
         pdu_unwritten
             .file_data_field_mut()
@@ -795,7 +810,7 @@ mod tests {
         );
         let mut write_buf: [u8; 64] = [0; 64];
         let mut pdu_unwritten = fd_pdu
-            .write_to_bytes_partially(&mut write_buf)
+            .write_to_slice_partially(&mut write_buf)
             .expect("partial write failed");
         pdu_unwritten
             .file_data_field_mut()

@@ -143,7 +143,7 @@ impl EofPdu {
     }
 
     /// Write [Self] to the provided buffer and returns the written size.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -152,7 +152,7 @@ impl EofPdu {
             }
             .into());
         }
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        let mut current_idx = self.pdu_header.write_to_slice(buf)?;
         buf[current_idx] = FileDirectiveType::Eof as u8;
         current_idx += 1;
         buf[current_idx] = (self.condition_code as u8) << 4;
@@ -165,12 +165,18 @@ impl EofPdu {
             &mut buf[current_idx..],
         )?;
         if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_bytes(&mut buf[current_idx..])?;
+            current_idx += fault_location.write_to_slice(&mut buf[current_idx..])?;
         }
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     /// Length of the written PDU in bytes.
@@ -192,8 +198,8 @@ impl CfdpPdu for EofPdu {
 }
 
 impl WritablePduPacket for EofPdu {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     fn len_written(&self) -> usize {
@@ -253,7 +259,7 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
-        let res = eof_pdu.write_to_bytes(&mut buf);
+        let res = eof_pdu.write_to_slice(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(written, eof_pdu.len_written());
@@ -285,7 +291,7 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
-        eof_pdu.write_to_bytes(&mut buf).unwrap();
+        eof_pdu.write_to_slice(&mut buf).unwrap();
         let eof_read_back = EofPdu::from_bytes(&buf);
         if let Err(e) = eof_read_back {
             panic!("deserialization failed with: {e}")
@@ -300,7 +306,7 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
-        let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
+        let written = eof_pdu.write_to_slice(&mut buf).unwrap();
         let pdu_vec = eof_pdu.to_vec().unwrap();
         assert_eq!(buf[0..written], pdu_vec);
     }
@@ -311,7 +317,7 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
-        let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
+        let written = eof_pdu.write_to_slice(&mut buf).unwrap();
         assert_eq!(written, eof_pdu.len_written());
         let eof_from_raw = EofPdu::from_bytes(&buf).expect("creating EOF PDU failed");
         assert_eq!(eof_from_raw, eof_pdu);

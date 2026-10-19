@@ -463,13 +463,13 @@ pub trait WritablePusPacket {
     /// The returned size is the written size WITHOUT the CRC checksum.
     /// If the checksum generation is disabled, this function is identical to the APIs which
     /// generate a checksum.
-    fn write_to_bytes_no_checksum(&self, slice: &mut [u8]) -> Result<usize, PusError>;
+    fn write_to_slice_no_checksum(&self, slice: &mut [u8]) -> Result<usize, PusError>;
 
-    /// First uses [Self::write_to_bytes_no_checksum] to write the packet to the given slice and
+    /// First uses [Self::write_to_slice_no_checksum] to write the packet to the given slice and
     /// then uses the [CRC_CCITT_FALSE] to calculate the CRC and write it to the slice if the
     /// packet is configured to include a checksum.
-    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = self.write_to_bytes_no_checksum(slice)?;
+    fn write_to_slice(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        let mut curr_idx = self.write_to_slice_no_checksum(slice)?;
         if self.has_checksum() {
             let mut digest = CRC_CCITT_FALSE.digest();
             digest.update(&slice[0..curr_idx]);
@@ -479,11 +479,11 @@ pub trait WritablePusPacket {
         Ok(curr_idx)
     }
 
-    /// First uses [Self::write_to_bytes_no_checksum] to write the packet to the given slice and then
+    /// First uses [Self::write_to_slice_no_checksum] to write the packet to the given slice and then
     /// uses the [CRC_CCITT_FALSE_NO_TABLE] to calculate the CRC and write it to the slice if
     /// the paket is configured to include a checksum.
-    fn write_to_bytes_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = self.write_to_bytes_no_checksum(slice)?;
+    fn write_to_slice_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        let mut curr_idx = self.write_to_slice_no_checksum(slice)?;
         if self.has_checksum() {
             let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
             digest.update(&slice[0..curr_idx]);
@@ -493,6 +493,27 @@ pub trait WritablePusPacket {
         Ok(curr_idx)
     }
 
+    /// Deprecated alias for [Self::write_to_slice_no_checksum].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice_no_checksum instead")]
+    fn write_to_bytes_no_checksum(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        self.write_to_slice_no_checksum(slice)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        self.write_to_slice(slice)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice_checksum_no_table].
+    #[deprecated(
+        since = "0.19.0",
+        note = "use write_to_slice_checksum_no_table instead"
+    )]
+    fn write_to_bytes_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        self.write_to_slice_checksum_no_table(slice)
+    }
+
     /// Converts the packet into an owned [alloc::vec::Vec].
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<Vec<u8>, PusError> {
@@ -500,7 +521,7 @@ pub trait WritablePusPacket {
         // [this issue](https://github.com/rust-lang/rust-clippy/issues/4483) for caveats of more
         // "efficient" implementations.
         let mut vec = alloc::vec![0; self.len_written()];
-        self.write_to_bytes(&mut vec)?;
+        self.write_to_slice(&mut vec)?;
         Ok(vec)
     }
 }

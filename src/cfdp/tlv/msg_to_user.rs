@@ -156,9 +156,15 @@ impl<'data> MsgToUserTlv<'data> {
     delegate!(
         to self.tlv {
             /// Write the TLV to a byte buffer.
-            pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+            pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
         }
     );
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
 }
 
 impl<'a> From<MsgToUserTlv<'a>> for Tlv<'a> {
@@ -173,8 +179,8 @@ impl WritableTlv for MsgToUserTlv<'_> {
         self.len_written()
     }
 
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.tlv.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.tlv.write_to_slice(buf)
     }
 }
 
@@ -405,7 +411,7 @@ impl<'src_lv, 'dest_lv> ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
     /// Write the proxy put message into a raw byte buffer.
     ///
     /// Returns the number of bytes written into the provided buffer.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         // The payload length was checked in the constructor.
         let mut current_index = write_reserved_msg_header(
             buf,
@@ -423,17 +429,17 @@ impl<'src_lv, 'dest_lv> ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
             .write_to_be_bytes(&mut buf[current_index..])?;
         current_index += self
             .source_file_name
-            .write_to_be_bytes(&mut buf[current_index..])?;
+            .write_to_slice(&mut buf[current_index..])?;
         current_index += self
             .dest_file_name
-            .write_to_be_bytes(&mut buf[current_index..])?;
+            .write_to_slice(&mut buf[current_index..])?;
         Ok(current_index)
     }
 }
 
 impl WritableTlv for ProxyPutRequestMessageCreator<'_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     #[inline]
@@ -555,7 +561,7 @@ impl ProxyPutResponseMessage {
     /// Write the proxy put response message into a raw byte buffer.
     ///
     /// Returns the number of bytes written into the provided buffer.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         let current_index = write_reserved_msg_header(
             buf,
             ReservedMessageType::ProxyPutResponse,
@@ -589,8 +595,8 @@ impl TryFrom<MsgToUserTlv<'_>> for ProxyPutResponseMessage {
 }
 
 impl WritableTlv for ProxyPutResponseMessage {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     #[inline]
@@ -630,7 +636,7 @@ mod tests {
         let custom_value: [u8; 4] = [1, 2, 3, 4];
         let msg_to_user = MsgToUserTlv::new(&custom_value).unwrap();
         let mut buf: [u8; 6] = [0; 6];
-        msg_to_user.write_to_bytes(&mut buf).unwrap();
+        msg_to_user.write_to_slice(&mut buf).unwrap();
         assert_eq!(
             buf,
             [
@@ -780,7 +786,7 @@ mod tests {
     fn test_proxy_put_request_serialization() {
         let creator = proxy_put_request_creator();
         let mut buf: [u8; 64] = [0; 64];
-        let written = creator.write_to_bytes(&mut buf).unwrap();
+        let written = creator.write_to_slice(&mut buf).unwrap();
         assert_eq!(written, creator.len_written());
         assert_eq!(written, 2 + 4 + 1 + 3 + 8 + 9);
         assert_eq!(buf[0], TlvType::MsgToUser as u8);
@@ -866,7 +872,7 @@ mod tests {
         let creator = proxy_put_request_creator();
         let mut buf: [u8; 8] = [0; 8];
         assert_eq!(
-            creator.write_to_bytes(&mut buf),
+            creator.write_to_slice(&mut buf),
             Err(ByteConversionError::ToSliceTooSmall {
                 found: 8,
                 expected: creator.len_written()
@@ -878,7 +884,7 @@ mod tests {
     fn test_proxy_put_request_round_trip() {
         let creator = proxy_put_request_creator();
         let mut buf: [u8; 64] = [0; 64];
-        let written = creator.write_to_bytes(&mut buf).unwrap();
+        let written = creator.write_to_slice(&mut buf).unwrap();
         let msg_to_user = MsgToUserTlv::from_bytes(&buf[..written]).unwrap();
         assert_eq!(
             msg_to_user.reserved_cfdp_msg_type(),
@@ -943,7 +949,7 @@ mod tests {
     fn test_proxy_put_response_serialization() {
         let response = proxy_put_response();
         let mut buf: [u8; 16] = [0; 16];
-        let written = response.write_to_bytes(&mut buf).unwrap();
+        let written = response.write_to_slice(&mut buf).unwrap();
         assert_eq!(written, response.len_written());
         assert_eq!(written, 2 + 4 + 1 + 1);
         assert_eq!(buf[0], TlvType::MsgToUser as u8);
@@ -957,7 +963,7 @@ mod tests {
     fn test_proxy_put_response_round_trip() {
         let response = proxy_put_response();
         let mut buf: [u8; 16] = [0; 16];
-        let written = response.write_to_bytes(&mut buf).unwrap();
+        let written = response.write_to_slice(&mut buf).unwrap();
         let msg_to_user = MsgToUserTlv::from_bytes(&buf[..written]).unwrap();
         assert_eq!(
             msg_to_user.reserved_cfdp_msg_type(),
@@ -985,7 +991,7 @@ mod tests {
             FileStatus::Retained,
         );
         let mut buf: [u8; 16] = [0; 16];
-        let written = response.write_to_bytes(&mut buf).unwrap();
+        let written = response.write_to_slice(&mut buf).unwrap();
         assert_eq!(buf[7], 0b0000_0010);
         let read_back = ProxyPutResponseMessage::from_bytes(&buf[..written]).unwrap();
         assert_eq!(read_back, response);
@@ -998,12 +1004,12 @@ mod tests {
     fn test_writable_tlv_impls() {
         let creator = proxy_put_request_creator();
         let mut buf: [u8; 64] = [0; 64];
-        let written = creator.write_to_bytes(&mut buf).unwrap();
+        let written = creator.write_to_slice(&mut buf).unwrap();
         assert_eq!(WritableTlv::len_written(&creator), written);
         assert_eq!(WritableTlv::to_vec(&creator), buf[..written]);
 
         let response = proxy_put_response();
-        let written = response.write_to_bytes(&mut buf).unwrap();
+        let written = response.write_to_slice(&mut buf).unwrap();
         assert_eq!(WritableTlv::len_written(&response), written);
         assert_eq!(WritableTlv::to_vec(&response), buf[..written]);
     }
@@ -1013,7 +1019,7 @@ mod tests {
         let response = proxy_put_response();
         let mut buf: [u8; 7] = [0; 7];
         assert_eq!(
-            response.write_to_bytes(&mut buf),
+            response.write_to_slice(&mut buf),
             Err(ByteConversionError::ToSliceTooSmall {
                 found: 7,
                 expected: 8
@@ -1049,7 +1055,7 @@ mod tests {
     fn test_proxy_put_response_wrong_type() {
         let mut buf: [u8; 64] = [0; 64];
         let written = proxy_put_request_creator()
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .unwrap();
         assert_eq!(
             ProxyPutResponseMessage::from_bytes(&buf[..written]),

@@ -254,7 +254,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
     }
 
     /// Write [Self] to the provided buffer and returns the written size.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -263,7 +263,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
             }
             .into());
         }
-        let mut current_index = self.pdu_header.write_to_bytes(buf)?;
+        let mut current_index = self.pdu_header.write_to_slice(buf)?;
         buf[current_index] = FileDirectiveType::Nak as u8;
         current_index += 1;
 
@@ -307,6 +307,12 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         Ok(current_index)
     }
 
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
+    }
+
     #[inline]
     fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
@@ -326,8 +332,8 @@ impl CfdpPdu for NakPduCreator<'_> {
 }
 
 impl WritablePduPacket for NakPduCreator<'_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        self.write_to_bytes(buf)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_slice(buf)
     }
 
     fn len_written(&self) -> usize {
@@ -465,7 +471,7 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
         end_of_scope: u64,
     ) -> Result<usize, InvalidStartOrEndOfScopeError> {
         self.set_start_and_end_of_scope(start_of_scope, end_of_scope)?;
-        let mut current_idx = self.pdu_header.write_to_bytes(self.buf).unwrap();
+        let mut current_idx = self.pdu_header.write_to_slice(self.buf).unwrap();
         self.buf[current_idx] = FileDirectiveType::Nak as u8;
         current_idx += 1;
 
@@ -810,7 +816,7 @@ mod tests {
         assert_eq!(nak_pdu.end_of_scope(), 300);
         let mut buf: [u8; 64] = [0; 64];
         nak_pdu
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .expect("writing NAK PDU to buffer failed");
         verify_raw_header(nak_pdu.pdu_header(), &buf);
         let mut current_idx = nak_pdu.pdu_header().header_len();
@@ -837,7 +843,7 @@ mod tests {
                 .expect("creating NAK PDU creator failed");
         let mut buf: [u8; 64] = [0; 64];
         nak_pdu
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .expect("writing NAK PDU to buffer failed");
         verify_raw_header(nak_pdu.pdu_header(), &buf);
         let mut current_idx = nak_pdu.pdu_header().header_len();
@@ -879,7 +885,7 @@ mod tests {
             .expect("creating NAK PDU creator failed");
         let mut buf: [u8; 64] = [0; 64];
         nak_pdu
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .expect("writing NAK PDU to buffer failed");
         let nak_pdu_deser = NakPduReader::from_bytes(&buf).expect("deserializing NAK PDU failed");
         assert_eq!(nak_pdu_deser, nak_pdu);
@@ -895,7 +901,7 @@ mod tests {
                 .expect("creating NAK PDU creator failed");
         let mut buf: [u8; 128] = [0; 128];
         nak_pdu
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .expect("writing NAK PDU to buffer failed");
         let nak_pdu_deser = NakPduReader::from_bytes(&buf).expect("deserializing NAK PDU failed");
         assert_eq!(nak_pdu_deser, nak_pdu);
@@ -932,7 +938,7 @@ mod tests {
                 .expect("creating NAK PDU creator failed");
         let mut buf: [u8; 128] = [0; 128];
         nak_pdu
-            .write_to_bytes(&mut buf)
+            .write_to_slice(&mut buf)
             .expect("writing NAK PDU to buffer failed");
         let nak_pdu_deser = NakPduReader::from_bytes(&buf).expect("deserializing NAK PDU failed");
         assert_eq!(nak_pdu_deser, nak_pdu);
@@ -1002,7 +1008,7 @@ mod tests {
         assert_eq!(nak_pdu.start_of_scope(), 100);
         assert_eq!(nak_pdu.end_of_scope(), 300);
         let mut buf: [u8; 5] = [0; 5];
-        let error = nak_pdu.write_to_bytes(&mut buf);
+        let error = nak_pdu.write_to_slice(&mut buf);
         assert!(error.is_err());
         let e = error.unwrap_err();
         match e {

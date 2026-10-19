@@ -1222,7 +1222,7 @@ impl CcsdsPacketCreatorCommon {
     }
 
     /// Write the CCSDS packet to the provided buffer.
-    pub fn write_to_bytes(
+    pub fn write_to_slice(
         &self,
         buf: &mut [u8],
         len_written: usize,
@@ -1251,7 +1251,7 @@ impl CcsdsPacketCreatorCommon {
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self, len_written: usize, packet_data: &[u8]) -> alloc::vec::Vec<u8> {
         let mut vec = alloc::vec![0u8; len_written];
-        self.write_to_bytes(&mut vec, len_written, packet_data)
+        self.write_to_slice(&mut vec, len_written, packet_data)
             .expect("buffer size shall match the len_written");
         vec
     }
@@ -1342,9 +1342,15 @@ impl CcsdsPacketCreator<'_> {
     }
 
     /// Write the CCSDS packet to the provided buffer.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.common
-            .write_to_bytes(buf, self.len_written(), self.packet_data)
+            .write_to_slice(buf, self.len_written(), self.packet_data)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     /// CCSDS space packet header.
@@ -1475,9 +1481,15 @@ impl CcsdsPacketCreatorOwned {
     }
 
     /// Write the CCSDS packet to the provided buffer.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.common
-            .write_to_bytes(buf, self.len_written(), &self.user_data)
+            .write_to_slice(buf, self.len_written(), &self.user_data)
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     /// CCSDS space packet header.

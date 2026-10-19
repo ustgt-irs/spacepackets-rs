@@ -164,7 +164,7 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 /// let timestamp_now = CdsTime::now_with_u16_days().unwrap();
 /// let mut raw_stamp = [0; 7];
 /// {
-///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
+///     let written = timestamp_now.write_to_slice(&mut raw_stamp).unwrap();
 ///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCode::Cds as u8);
 ///     assert_eq!(written, 7);
 /// }
@@ -236,7 +236,7 @@ impl DynCdsTimeProvider for CdsTime<DaysLen24Bits> {}
 /// let timestamp_now = CdsTime::new_with_u16_days(24, 24);
 /// let mut raw_stamp = [0; 7];
 /// {
-///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
+///     let written = timestamp_now.write_to_slice(&mut raw_stamp).unwrap();
 ///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCode::Cds as u8);
 ///     assert_eq!(written, 7);
 /// }
@@ -726,7 +726,7 @@ impl CdsTime<DaysLen16Bits> {
     }
 
     /// Write the CDS timestamp to a raw byte array.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.length_check(buf, self.len_as_bytes())?;
         buf[0] = self.pfield;
         buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
@@ -741,6 +741,12 @@ impl CdsTime<DaysLen16Bits> {
             _ => (),
         }
         Ok(self.len_as_bytes())
+    }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
     }
 
     /// Constructor from the CDS timestamp as a raw byte array.
@@ -905,8 +911,8 @@ impl TimeReader for CdsTime<DaysLen24Bits> {
 }
 
 impl TimeWriter for CdsTime<DaysLen16Bits> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
-        self.write_to_bytes(buf).map_err(TimestampError::from)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
+        self.write_to_slice(buf).map_err(TimestampError::from)
     }
 
     fn len_written(&self) -> usize {
@@ -916,7 +922,7 @@ impl TimeWriter for CdsTime<DaysLen16Bits> {
 
 impl CdsTime<DaysLen24Bits> {
     /// Write the CDS timestamp to a raw byte array.
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.length_check(buf, self.len_as_bytes())?;
         buf[0] = self.pfield;
         let be_days = self.ccsds_days.to_be_bytes();
@@ -933,11 +939,17 @@ impl CdsTime<DaysLen24Bits> {
         }
         Ok(self.len_as_bytes())
     }
+
+    /// Deprecated alias for [Self::write_to_slice].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice(buf)
+    }
 }
 
 impl TimeWriter for CdsTime<DaysLen24Bits> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
-        self.write_to_bytes(buf).map_err(TimestampError::from)
+    fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
+        self.write_to_slice(buf).map_err(TimestampError::from)
     }
 
     fn len_written(&self) -> usize {
@@ -1383,7 +1395,7 @@ mod tests {
         let time_stamper = time_stamper.unwrap();
         assert_eq!(time_stamper.len_as_bytes(), 8);
         let mut buf = [0; 16];
-        let written = time_stamper.write_to_bytes(&mut buf);
+        let written = time_stamper.write_to_slice(&mut buf);
         assert!(written.is_ok());
         let written = written.unwrap();
         assert_eq!(written, 8);
@@ -1401,7 +1413,7 @@ mod tests {
         assert!(time_stamper.is_ok());
         let time_stamper = time_stamper.unwrap();
         let mut buf = [0; 16];
-        let written = time_stamper.write_to_bytes(&mut buf);
+        let written = time_stamper.write_to_slice(&mut buf);
         assert!(written.is_ok());
         let provider = CdsTime::<DaysLen24Bits>::from_bytes(&buf);
         assert!(provider.is_ok());
@@ -1416,7 +1428,7 @@ mod tests {
         assert!(time_stamper.is_ok());
         let time_stamper = time_stamper.unwrap();
         let mut buf = [0; 16];
-        let written = time_stamper.write_to_bytes(&mut buf);
+        let written = time_stamper.write_to_slice(&mut buf);
         assert!(written.is_ok());
         let faulty_ctor = CdsTime::<DaysLen16Bits>::from_bytes(&buf);
         assert!(faulty_ctor.is_err());
@@ -1438,7 +1450,7 @@ mod tests {
             unix_stamp.secs,
             (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32).into()
         );
-        let mut res = time_stamper_0.write_to_bytes(&mut buf);
+        let mut res = time_stamper_0.write_to_slice(&mut buf);
         assert!(res.is_ok());
         assert_eq!(buf[0], (CcsdsTimeCode::Cds as u8) << 4);
         assert_eq!(
@@ -1450,7 +1462,7 @@ mod tests {
             0
         );
         let time_stamper_1 = CdsTime::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
-        res = time_stamper_1.write_to_bytes(&mut buf);
+        res = time_stamper_1.write_to_slice(&mut buf);
         assert!(res.is_ok());
         assert_eq!(buf[0], (CcsdsTimeCode::Cds as u8) << 4);
         assert_eq!(
@@ -1468,7 +1480,7 @@ mod tests {
         let mut buf = [0; 7];
         let time_stamper = CdsTime::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
         for i in 0..6 {
-            let res = time_stamper.write_to_bytes(&mut buf[0..i]);
+            let res = time_stamper.write_to_slice(&mut buf[0..i]);
             assert!(res.is_err());
             let error = res.unwrap_err();
             match error {
@@ -1516,7 +1528,7 @@ mod tests {
     fn test_faulty_invalid_pfield() {
         let mut buf = [0; 16];
         let time_stamper_0 = CdsTime::new_with_u16_days(0, 0);
-        let res = time_stamper_0.write_to_bytes(&mut buf);
+        let res = time_stamper_0.write_to_slice(&mut buf);
         assert!(res.is_ok());
         buf[0] = 0;
         let res = CdsTime::<DaysLen16Bits>::from_bytes(&buf);
@@ -1533,7 +1545,7 @@ mod tests {
     fn test_reading() {
         let mut buf = [0; 16];
         let time_stamper = CdsTime::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
-        let res = time_stamper.write_to_bytes(&mut buf);
+        let res = time_stamper.write_to_slice(&mut buf);
         assert!(res.is_ok());
         assert_eq!(buf[0], (CcsdsTimeCode::Cds as u8) << 4);
         assert_eq!(
@@ -1627,7 +1639,7 @@ mod tests {
         assert_eq!(time_stamper.submillis(), 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
-            .write_to_bytes(&mut write_buf)
+            .write_to_slice(&mut write_buf)
             .expect("Writing timestamp failed");
         assert_eq!(written, 9);
         let cross_check: u16 = 500;
@@ -1645,7 +1657,7 @@ mod tests {
         assert_eq!(time_stamper.submillis(), 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
-            .write_to_bytes(&mut write_buf)
+            .write_to_slice(&mut write_buf)
             .expect("Writing timestamp failed");
         assert_eq!(written, 11);
         let cross_check: u32 = 5e8 as u32;
@@ -1658,7 +1670,7 @@ mod tests {
         time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
-            .write_to_bytes(&mut write_buf)
+            .write_to_slice(&mut write_buf)
             .expect("Writing timestamp failed");
         assert_eq!(written, 11);
         let stamp_deserialized = CdsTime::<DaysLen16Bits>::from_bytes(&write_buf);
@@ -1678,7 +1690,7 @@ mod tests {
         time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
-            .write_to_bytes(&mut write_buf)
+            .write_to_slice(&mut write_buf)
             .expect("Writing timestamp failed");
         assert_eq!(written, 9);
         let stamp_deserialized = CdsTime::<DaysLen16Bits>::from_bytes(&write_buf);
@@ -1698,7 +1710,7 @@ mod tests {
         time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
-            .write_to_bytes(&mut write_buf)
+            .write_to_slice(&mut write_buf)
             .expect("Writing timestamp failed");
         // 1 byte pfield + 3 bytes days + 4 bytes ms of day + 2 bytes us precision
         assert_eq!(written, 10);
@@ -1720,7 +1732,7 @@ mod tests {
         time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
-            .write_to_bytes(&mut write_buf)
+            .write_to_slice(&mut write_buf)
             .expect("Writing timestamp failed");
         // 1 byte pfield + 3 bytes days + 4 bytes ms of day + 4 bytes us precision
         assert_eq!(written, 12);
@@ -2052,7 +2064,7 @@ mod tests {
     fn test_dyn_creation_u24_days() {
         let stamp = CdsTime::new_with_u24_days(u16::MAX as u32 + 1, 24).unwrap();
         let mut buf: [u8; 32] = [0; 32];
-        stamp.write_to_bytes(&mut buf).unwrap();
+        stamp.write_to_slice(&mut buf).unwrap();
         let dyn_provider = get_dyn_time_provider_from_bytes(&buf);
         assert!(dyn_provider.is_ok());
         let dyn_provider = dyn_provider.unwrap();
@@ -2180,7 +2192,7 @@ mod tests {
         let mut stamp = CdsTime::new_with_u16_days(24, 24);
         stamp.set_submillis(SubmillisPrecision::Microseconds, 666);
         let mut buf: [u8; 32] = [0; 32];
-        stamp.write_to_bytes(&mut buf).unwrap();
+        stamp.write_to_slice(&mut buf).unwrap();
         let dyn_provider = get_dyn_time_provider_from_bytes(&buf);
         assert!(dyn_provider.is_ok());
         let dyn_provider = dyn_provider.unwrap();
@@ -2232,7 +2244,7 @@ mod tests {
     fn test_eq() {
         let stamp0 = CdsTime::new_with_u16_days(0, 0);
         let mut buf: [u8; 7] = [0; 7];
-        stamp0.write_to_bytes(&mut buf).unwrap();
+        stamp0.write_to_slice(&mut buf).unwrap();
         let stamp1 = CdsTime::from_bytes_with_u16_days(&buf).unwrap();
         assert_eq!(stamp0, stamp1);
         assert!(stamp0 >= stamp1);
@@ -2307,7 +2319,7 @@ mod tests {
         let stamp = CdsTime::new_with_u16_days(1, 1);
         let stamp_vec = stamp.to_vec().unwrap();
         let mut buf: [u8; 7] = [0; 7];
-        stamp.write_to_bytes(&mut buf).unwrap();
+        stamp.write_to_slice(&mut buf).unwrap();
         assert_eq!(stamp_vec, buf);
     }
 
@@ -2316,7 +2328,7 @@ mod tests {
         let stamp = CdsTime::new_with_u24_days(1, 1).unwrap();
         let stamp_vec = stamp.to_vec().unwrap();
         let mut buf: [u8; 10] = [0; 10];
-        stamp.write_to_bytes(&mut buf).unwrap();
+        stamp.write_to_slice(&mut buf).unwrap();
         assert_eq!(stamp_vec, buf[..stamp.len_written()]);
     }
 
