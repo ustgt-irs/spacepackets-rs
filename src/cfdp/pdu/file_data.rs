@@ -225,7 +225,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
 
     /// Optional segment metadata.
     #[inline]
-    pub fn segment_metadata(&self) -> Option<&SegmentMetadata<'_>> {
+    pub fn segment_metadata(&self) -> Option<&SegmentMetadata<'seg_meta>> {
         self.common.segment_metadata.as_ref()
     }
 

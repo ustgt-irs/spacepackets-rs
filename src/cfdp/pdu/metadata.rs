@@ -171,7 +171,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
 
     /// Yield an iterator which can be used to loop through all options. Returns [None] if the
     /// options field is empty.
-    pub fn options_iter(&self) -> OptionsIter<'_> {
+    pub fn options_iter(&self) -> OptionsIter<'opts> {
         OptionsIter {
             opt_buf: self.options,
             current_idx: 0,
@@ -372,7 +372,7 @@ impl<'raw> MetadataPduReader<'raw> {
 
     /// Yield an iterator which can be used to loop through all options. Returns [None] if the
     /// options field is empty.
-    pub fn options_iter(&self) -> Option<OptionsIter<'_>> {
+    pub fn options_iter(&self) -> Option<OptionsIter<'raw>> {
         Some(OptionsIter {
             opt_buf: self.options,
             current_idx: 0,
@@ -399,13 +399,13 @@ impl<'raw> MetadataPduReader<'raw> {
 
     /// Source file name as a [Lv].
     #[inline]
-    pub fn src_file_name(&self) -> Lv<'_> {
+    pub fn src_file_name(&self) -> Lv<'raw> {
         self.src_file_name
     }
 
     /// Destination file name as a [Lv].
     #[inline]
-    pub fn dest_file_name(&self) -> Lv<'_> {
+    pub fn dest_file_name(&self) -> Lv<'raw> {
         self.dest_file_name
     }
 }
@@ -895,5 +895,24 @@ mod tests {
             dest_filename,
         );
         assert_eq!(metadata_pdu.pdu_header().pdu_type(), PduType::FileDirective);
+    }
+
+    #[test]
+    fn test_file_names_outlive_reader() {
+        let (_, _, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            true,
+            LargeFileFlag::Normal,
+            &[],
+        );
+        let mut buf: [u8; 64] = [0; 64];
+        metadata_pdu.write_to_slice(&mut buf).unwrap();
+        let (src_name, dest_name) = {
+            let reader = MetadataPduReader::new(&buf).unwrap();
+            (reader.src_file_name(), reader.dest_file_name())
+        };
+        assert_eq!(src_name.value_as_str(), Some(Ok(SRC_FILENAME)));
+        assert_eq!(dest_name.value_as_str(), Some(Ok(DEST_FILENAME)));
     }
 }

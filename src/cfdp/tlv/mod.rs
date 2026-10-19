@@ -244,7 +244,7 @@ impl<'data> Tlv<'data> {
     /// If the TLV was generated from a raw bytestream using [Self::from_bytes], the raw start
     /// of the TLV can be retrieved with this method.
     #[inline]
-    pub fn raw_data(&self) -> Option<&[u8]> {
+    pub fn raw_data(&self) -> Option<&'data [u8]> {
         self.lv.raw_data()
     }
 

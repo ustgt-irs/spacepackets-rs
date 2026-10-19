@@ -415,13 +415,13 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
 
     /// Raw timestamp slice.
     #[inline]
-    pub fn timestamp(&self) -> &[u8] {
+    pub fn timestamp(&self) -> &'time [u8] {
         self.sec_header.timestamp
     }
 
     /// Raw source data slice.
     #[inline]
-    pub fn source_data(&self) -> &[u8] {
+    pub fn source_data(&self) -> &'src_data [u8] {
         self.source_data
     }
 
@@ -2112,5 +2112,16 @@ mod tests {
         let output = to_allocvec(&tm_reader).unwrap();
         let output_converted_back: PusTmReader = from_bytes(&output).unwrap();
         assert_eq!(output_converted_back, tm_reader);
+    }
+
+    #[test]
+    fn test_data_outlives_creator() {
+        let src_data = [1, 2, 3];
+        let (timestamp, source_data) = {
+            let creator = base_hk_reply(dummy_timestamp(), &src_data);
+            (creator.timestamp(), creator.source_data())
+        };
+        assert_eq!(timestamp, dummy_timestamp());
+        assert_eq!(source_data, &src_data);
     }
 }
