@@ -3,10 +3,9 @@
 //! # Examples
 //!
 //! ```rust
-//! use spacepackets::time::TimeWriter;
 //! use spacepackets::time::cds::CdsTime;
 //! use spacepackets::{CcsdsPacket, SpHeader};
-//! use spacepackets::ecss::{PusPacket, WritablePusPacket};
+//! use spacepackets::ecss::PusPacket;
 //! use spacepackets::ecss::tm_pus_a::{
 //!     PusTmCreator,
 //!     PusTmReader,
@@ -54,7 +53,7 @@ use crate::ecss::{
     crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error,
 };
-use crate::util::{UnsignedByteField, UnsignedEnum};
+use crate::util::UnsignedByteField;
 use crate::{
     ByteConversionError, CCSDS_HEADER_LEN, CcsdsPacket, MAX_APID, PacketType, SequenceFlags,
     SpHeader,
@@ -567,12 +566,24 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         vec.extend_from_slice(&digest.finalize().to_be_bytes());
         Ok(appended_len)
     }
+
+    /// Length of the written packet, including the CRC.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        CCSDS_HEADER_LEN + self.sec_header.written_len() + self.source_data.len() + 2
+    }
+
+    /// Write the packet to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PusError> {
+        WritablePusPacket::to_vec(self)
+    }
 }
 
 impl WritablePusPacket for PusTmCreator<'_, '_> {
     #[inline]
     fn len_written(&self) -> usize {
-        CCSDS_HEADER_LEN + self.sec_header.written_len() + self.source_data.len() + 2
+        self.len_written()
     }
 
     /// Currently, checksum is always added.

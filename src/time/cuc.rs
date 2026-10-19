@@ -235,7 +235,7 @@ impl FractionalPart {
 ///
 /// ```
 /// use spacepackets::time::cuc::{FractionalResolution, CucTime};
-/// use spacepackets::time::{TimeWriter, CcsdsTimeCode, TimeReader, CcsdsTimeProvider};
+/// use spacepackets::time::{CcsdsTimeCode, TimeReader, CcsdsTimeProvider};
 ///
 /// const LEAP_SECONDS: u32 = 37;
 ///
@@ -645,6 +645,62 @@ impl CucTime {
         // Rounding down here is the correct approach.
         convert_fractional_part_to_ns(self.fractions) as u32
     }
+
+    /// Write the timestamp to a raw byte buffer.
+    pub fn write_to_slice(&self, bytes: &mut [u8]) -> Result<usize, TimestampError> {
+        // Cross check the sizes of the counters against byte widths in the ctor
+        if bytes.len() < self.len_as_bytes() {
+            return Err(TimestampError::ByteConversion(
+                ByteConversionError::ToSliceTooSmall {
+                    found: bytes.len(),
+                    expected: self.len_as_bytes(),
+                },
+            ));
+        }
+        bytes[0] = self.pfield;
+        let mut current_idx: usize = 1;
+        match self.counter.0 {
+            1 => {
+                bytes[current_idx] = self.counter.1 as u8;
+            }
+            2 => {
+                bytes[current_idx..current_idx + 2]
+                    .copy_from_slice(&(self.counter.1 as u16).to_be_bytes());
+            }
+            3 => {
+                bytes[current_idx..current_idx + 3]
+                    .copy_from_slice(&self.counter.1.to_be_bytes()[1..4]);
+            }
+            4 => {
+                bytes[current_idx..current_idx + 4].copy_from_slice(&self.counter.1.to_be_bytes());
+            }
+            // Should never happen
+            _ => panic!("invalid counter width value"),
+        }
+        current_idx += self.counter.0 as usize;
+        match self.fractions.resolution() {
+            FractionalResolution::FourMs => bytes[current_idx] = self.fractions.counter as u8,
+            FractionalResolution::FifteenUs => bytes[current_idx..current_idx + 2]
+                .copy_from_slice(&(self.fractions.counter as u16).to_be_bytes()),
+            FractionalResolution::SixtyNs => bytes[current_idx..current_idx + 3]
+                .copy_from_slice(&self.fractions.counter.to_be_bytes()[1..4]),
+            _ => (),
+        }
+        current_idx += self.fractions.resolution as usize;
+        Ok(current_idx)
+    }
+
+    /// Length of the written timestamp.
+    #[inline]
+    pub fn len_written(&self) -> usize {
+        self.len_as_bytes()
+    }
+
+    /// Write the timestamp to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, TimestampError> {
+        TimeWriter::to_vec(self)
+    }
 }
 
 impl TimeReader for CucTime {
@@ -730,50 +786,11 @@ impl TimeReader for CucTime {
 
 impl TimeWriter for CucTime {
     fn write_to_slice(&self, bytes: &mut [u8]) -> Result<usize, TimestampError> {
-        // Cross check the sizes of the counters against byte widths in the ctor
-        if bytes.len() < self.len_as_bytes() {
-            return Err(TimestampError::ByteConversion(
-                ByteConversionError::ToSliceTooSmall {
-                    found: bytes.len(),
-                    expected: self.len_as_bytes(),
-                },
-            ));
-        }
-        bytes[0] = self.pfield;
-        let mut current_idx: usize = 1;
-        match self.counter.0 {
-            1 => {
-                bytes[current_idx] = self.counter.1 as u8;
-            }
-            2 => {
-                bytes[current_idx..current_idx + 2]
-                    .copy_from_slice(&(self.counter.1 as u16).to_be_bytes());
-            }
-            3 => {
-                bytes[current_idx..current_idx + 3]
-                    .copy_from_slice(&self.counter.1.to_be_bytes()[1..4]);
-            }
-            4 => {
-                bytes[current_idx..current_idx + 4].copy_from_slice(&self.counter.1.to_be_bytes());
-            }
-            // Should never happen
-            _ => panic!("invalid counter width value"),
-        }
-        current_idx += self.counter.0 as usize;
-        match self.fractions.resolution() {
-            FractionalResolution::FourMs => bytes[current_idx] = self.fractions.counter as u8,
-            FractionalResolution::FifteenUs => bytes[current_idx..current_idx + 2]
-                .copy_from_slice(&(self.fractions.counter as u16).to_be_bytes()),
-            FractionalResolution::SixtyNs => bytes[current_idx..current_idx + 3]
-                .copy_from_slice(&self.fractions.counter.to_be_bytes()[1..4]),
-            _ => (),
-        }
-        current_idx += self.fractions.resolution as usize;
-        Ok(current_idx)
+        self.write_to_slice(bytes)
     }
 
     fn len_written(&self) -> usize {
-        self.len_as_bytes()
+        self.len_written()
     }
 }
 

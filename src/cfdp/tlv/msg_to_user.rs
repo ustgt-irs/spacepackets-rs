@@ -1,7 +1,7 @@
 //! Abstractions for the Message to User CFDP TLV subtype.
 #[cfg(feature = "alloc")]
 use super::TlvOwned;
-use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
+use super::{GenericTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::{
     ByteConversionError,
     cfdp::{
@@ -9,7 +9,7 @@ use crate::{
         lv::Lv,
         pdu::finished::{DeliveryCode, FileStatus, pack_status_byte, unpack_status_byte},
     },
-    util::{UnsignedByteField, UnsignedByteFieldError, UnsignedEnum},
+    util::{UnsignedByteField, UnsignedByteFieldError},
 };
 use delegate::delegate;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -148,8 +148,9 @@ impl<'data> MsgToUserTlv<'data> {
         self.tlv.to_owned()
     }
 
+    /// Length of the written TLV.
     #[inline]
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.len_full()
     }
 
@@ -157,6 +158,8 @@ impl<'data> MsgToUserTlv<'data> {
         to self.tlv {
             /// Write the TLV to a byte buffer.
             pub fn write_to_slice(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+            /// TLV type field.
+            pub fn tlv_type_field(&self) -> TlvTypeField;
         }
     );
 
@@ -164,6 +167,12 @@ impl<'data> MsgToUserTlv<'data> {
     #[deprecated(since = "0.19.0", note = "use write_to_slice instead")]
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.write_to_slice(buf)
+    }
+
+    /// Write the TLV to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        WritableTlv::to_vec(self)
     }
 }
 
@@ -187,7 +196,7 @@ impl WritableTlv for MsgToUserTlv<'_> {
 impl GenericTlv for MsgToUserTlv<'_> {
     #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
-        self.tlv.tlv_type_field()
+        self.tlv_type_field()
     }
 }
 
@@ -435,6 +444,12 @@ impl<'src_lv, 'dest_lv> ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
             .write_to_slice(&mut buf[current_index..])?;
         Ok(current_index)
     }
+
+    /// Write the message to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        WritableTlv::to_vec(self)
+    }
 }
 
 impl WritableTlv for ProxyPutRequestMessageCreator<'_, '_> {
@@ -570,6 +585,12 @@ impl ProxyPutResponseMessage {
         buf[current_index] =
             pack_status_byte(self.condition_code, self.delivery_code, self.file_status);
         Ok(current_index + Self::PAYLOAD_LEN)
+    }
+
+    /// Write the message to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        WritableTlv::to_vec(self)
     }
 }
 

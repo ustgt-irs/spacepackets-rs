@@ -313,9 +313,16 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         self.write_to_slice(buf)
     }
 
+    /// Length of the written PDU.
     #[inline]
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+
+    /// Write the PDU to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PduError> {
+        WritablePduPacket::to_vec(self)
     }
 }
 

@@ -565,11 +565,10 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         }
         Ok(appended_len)
     }
-}
 
-impl WritablePusPacket for PusTmCreator<'_, '_> {
+    /// Length of the written packet, including the CRC.
     #[inline]
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         let mut len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
             + self.sec_header.timestamp.len()
             + self.source_data.len();
@@ -577,6 +576,19 @@ impl WritablePusPacket for PusTmCreator<'_, '_> {
             len += 2
         }
         len
+    }
+
+    /// Write the packet to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PusError> {
+        WritablePusPacket::to_vec(self)
+    }
+}
+
+impl WritablePusPacket for PusTmCreator<'_, '_> {
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 
     /// Currently, checksum is always added.

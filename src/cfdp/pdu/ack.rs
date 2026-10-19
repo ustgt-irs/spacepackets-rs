@@ -207,6 +207,12 @@ impl AckPdu {
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
+
+    /// Write the PDU to an owned [alloc::vec::Vec].
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, PduError> {
+        WritablePduPacket::to_vec(self)
+    }
 }
 
 impl CfdpPdu for AckPdu {

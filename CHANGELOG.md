@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `TryFrom<&str>` implementation for `Lv`.
 - Inherent `Tlv::write_to_slice` and `Tlv::len_written` methods, so the `WritableTlv` trait does
   not need to be imported.
+- Inherent `write_to_slice`, `len_written` and `to_vec` methods on all implementors of
+  `WritableTlv`, `WritablePduPacket`, `TimeWriter` and `WritablePusPacket`, so the writer
+  traits do not need to be imported for common use.
+- Inherent `value`, `len_value`, `len_full`, `is_empty` and `tlv_type_field` methods on `Tlv`
+  and `TlvOwned`, and inherent `tlv_type_field` on the specific TLV types.
+- Inherent `size`, `value_raw`, `write_to_be_bytes` and `to_vec` methods on
+  `UnsignedByteField`, `GenericUnsignedByteField` and `GenericEcssEnumWrapper`, so
+  `UnsignedEnum` does not need to be imported.
 
 ## Fixed
 
