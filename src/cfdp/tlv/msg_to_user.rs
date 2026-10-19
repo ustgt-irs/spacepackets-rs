@@ -435,7 +435,7 @@ impl<'src_lv, 'dest_lv> ProxyPutRequestMessageCreator<'src_lv, 'dest_lv> {
         current_index += 1;
         current_index += self
             .destination_entity_id
-            .write_to_be_bytes(&mut buf[current_index..])?;
+            .write_to_slice_be(&mut buf[current_index..])?;
         current_index += self
             .source_file_name
             .write_to_slice(&mut buf[current_index..])?;

@@ -88,8 +88,15 @@ impl ToBeBytes for u64 {
 pub trait UnsignedEnum {
     /// Size of the unsigned enumeration in bytes.
     fn size(&self) -> usize;
-    /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+    /// Write the unsigned enumeration to a raw buffer in big endian format. Returns the written
+    /// size on success.
+    fn write_to_slice_be(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+
+    /// Deprecated alias for [Self::write_to_slice_be].
+    #[deprecated(since = "0.19.0", note = "use write_to_slice_be instead")]
+    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_slice_be(buf)
+    }
 
     /// Type-erased raw value.
     fn value_raw(&self) -> u64;
@@ -98,7 +105,7 @@ pub trait UnsignedEnum {
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> alloc::vec::Vec<u8> {
         let mut buf = alloc::vec![0; self.size()];
-        self.write_to_be_bytes(&mut buf).unwrap();
+        self.write_to_slice_be(&mut buf).unwrap();
         buf
     }
 }
@@ -199,9 +206,10 @@ impl UnsignedByteField {
         UnsignedEnum::value_raw(self)
     }
 
-    /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        UnsignedEnum::write_to_be_bytes(self, buf)
+    /// Write the unsigned enumeration to a raw buffer in big endian format. Returns the written
+    /// size on success.
+    pub fn write_to_slice_be(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        UnsignedEnum::write_to_slice_be(self, buf)
     }
 
     /// Convert to a [alloc::vec::Vec].
@@ -222,7 +230,7 @@ impl UnsignedEnum for UnsignedByteField {
         self.value()
     }
 
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    fn write_to_slice_be(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.size() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 expected: self.size(),
@@ -233,19 +241,19 @@ impl UnsignedEnum for UnsignedByteField {
             0 => Ok(0),
             1 => {
                 let u8 = UnsignedByteFieldU8::try_from(*self).unwrap();
-                u8.write_to_be_bytes(buf)
+                u8.write_to_slice_be(buf)
             }
             2 => {
                 let u16 = UnsignedByteFieldU16::try_from(*self).unwrap();
-                u16.write_to_be_bytes(buf)
+                u16.write_to_slice_be(buf)
             }
             4 => {
                 let u32 = UnsignedByteFieldU32::try_from(*self).unwrap();
-                u32.write_to_be_bytes(buf)
+                u32.write_to_slice_be(buf)
             }
             8 => {
                 let u64 = UnsignedByteFieldU64::try_from(*self).unwrap();
-                u64.write_to_be_bytes(buf)
+                u64.write_to_slice_be(buf)
             }
             _ => {
                 // The API does not allow this.
@@ -288,9 +296,10 @@ impl<TYPE: Copy + ToBeBytes + Into<u64>> GenericUnsignedByteField<TYPE> {
         UnsignedEnum::value_raw(self)
     }
 
-    /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        UnsignedEnum::write_to_be_bytes(self, buf)
+    /// Write the unsigned enumeration to a raw buffer in big endian format. Returns the written
+    /// size on success.
+    pub fn write_to_slice_be(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        UnsignedEnum::write_to_slice_be(self, buf)
     }
 
     /// Convert to a [alloc::vec::Vec].
@@ -306,7 +315,7 @@ impl<TYPE: Copy + ToBeBytes + Into<u64>> UnsignedEnum for GenericUnsignedByteFie
         self.value.written_len()
     }
 
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    fn write_to_slice_be(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.size() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -445,7 +454,7 @@ mod tests {
         assert_eq!(u8.size(), 1);
         let mut buf: [u8; 8] = [0; 8];
         let len = u8
-            .write_to_be_bytes(&mut buf)
+            .write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         assert_eq!(len, 1);
         assert_eq!(buf[0], 5);
@@ -462,7 +471,7 @@ mod tests {
         assert_eq!(u16.size(), 2);
         let mut buf: [u8; 8] = [0; 8];
         let len = u16
-            .write_to_be_bytes(&mut buf)
+            .write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         assert_eq!(len, 2);
         let raw_val = u16::from_be_bytes(buf[0..2].try_into().unwrap());
@@ -480,7 +489,7 @@ mod tests {
         assert_eq!(u32.size(), 4);
         let mut buf: [u8; 8] = [0; 8];
         let len = u32
-            .write_to_be_bytes(&mut buf)
+            .write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         assert_eq!(len, 4);
         let raw_val = u32::from_be_bytes(buf[0..4].try_into().unwrap());
@@ -498,7 +507,7 @@ mod tests {
         assert_eq!(u64.size(), 8);
         let mut buf: [u8; 8] = [0; 8];
         let len = u64
-            .write_to_be_bytes(&mut buf)
+            .write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         assert_eq!(len, 8);
         let raw_val = u64::from_be_bytes(buf[0..8].try_into().unwrap());
@@ -640,7 +649,7 @@ mod tests {
         let u8 = UnsignedByteField::new(1, 5);
         assert_eq!(u8.size(), 1);
         let mut buf: [u8; 8] = [0; 8];
-        u8.write_to_be_bytes(&mut buf)
+        u8.write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         assert_eq!(buf[0], 5);
         (1..8).for_each(|i| {
@@ -653,7 +662,7 @@ mod tests {
         let u16 = UnsignedByteField::new(2, 3823);
         assert_eq!(u16.size(), 2);
         let mut buf: [u8; 8] = [0; 8];
-        u16.write_to_be_bytes(&mut buf)
+        u16.write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         let raw_val = u16::from_be_bytes(buf[0..2].try_into().unwrap());
         assert_eq!(raw_val, 3823);
@@ -667,7 +676,7 @@ mod tests {
         let u32 = UnsignedByteField::new(4, 80932);
         assert_eq!(u32.size(), 4);
         let mut buf: [u8; 8] = [0; 8];
-        u32.write_to_be_bytes(&mut buf)
+        u32.write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         let raw_val = u32::from_be_bytes(buf[0..4].try_into().unwrap());
         assert_eq!(raw_val, 80932);
@@ -681,7 +690,7 @@ mod tests {
         let u64 = UnsignedByteField::new(8, 5999999);
         assert_eq!(u64.size(), 8);
         let mut buf: [u8; 8] = [0; 8];
-        u64.write_to_be_bytes(&mut buf)
+        u64.write_to_slice_be(&mut buf)
             .expect("writing to raw buffer failed");
         let raw_val = u64::from_be_bytes(buf[0..8].try_into().unwrap());
         assert_eq!(raw_val, 5999999);
@@ -723,7 +732,7 @@ mod tests {
     fn type_u16_target_buf_too_small() {
         let u16 = UnsignedByteFieldU16::new(500);
         let mut buf: [u8; 1] = [0; 1];
-        let res = u16.write_to_be_bytes(&mut buf);
+        let res = u16.write_to_slice_be(&mut buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
@@ -741,7 +750,7 @@ mod tests {
     fn type_erased_u16_target_buf_too_small() {
         let u16 = UnsignedByteField::new(2, 500);
         let mut buf: [u8; 1] = [0; 1];
-        let res = u16.write_to_be_bytes(&mut buf);
+        let res = u16.write_to_slice_be(&mut buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
@@ -771,7 +780,7 @@ mod tests {
     fn type_u32_target_buf_too_small() {
         let u16 = UnsignedByteFieldU32::new(500);
         let mut buf: [u8; 3] = [0; 3];
-        let res = u16.write_to_be_bytes(&mut buf);
+        let res = u16.write_to_slice_be(&mut buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {

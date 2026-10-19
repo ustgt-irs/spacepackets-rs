@@ -545,7 +545,7 @@ impl EntityIdTlv {
     pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv<'_>, ByteConversionError> {
         Self::len_check(buf)?;
         self.entity_id
-            .write_to_be_bytes(&mut buf[2..2 + self.entity_id.size()])?;
+            .write_to_slice_be(&mut buf[2..2 + self.entity_id.size()])?;
         // Can't fail.
         Ok(Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).unwrap())
     }
@@ -555,7 +555,7 @@ impl EntityIdTlv {
         Self::len_check(buf)?;
         buf[0] = TlvType::EntityId as u8;
         buf[1] = self.entity_id.size() as u8;
-        Ok(2 + self.entity_id.write_to_be_bytes(&mut buf[2..])?)
+        Ok(2 + self.entity_id.write_to_slice_be(&mut buf[2..])?)
     }
 
     /// Length of the written TLV.
@@ -1166,7 +1166,7 @@ mod tests {
     fn test_basic() {
         let entity_id = UbfU8::new(5);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        assert!(entity_id.write_to_slice_be(&mut buf).is_ok());
         let tlv_res = Tlv::new(TlvType::EntityId, &buf[0..1]);
         assert!(tlv_res.is_ok());
         let tlv_res = tlv_res.unwrap();
@@ -1185,7 +1185,7 @@ mod tests {
     fn test_serialization() {
         let entity_id = UbfU8::new(5);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        assert!(entity_id.write_to_slice_be(&mut buf).is_ok());
         let tlv_res = Tlv::new(TlvType::EntityId, &buf[0..1]);
         assert!(tlv_res.is_ok());
         let tlv_res = tlv_res.unwrap();
@@ -1200,7 +1200,7 @@ mod tests {
     fn test_deserialization() {
         let entity_id = UbfU8::new(5);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(entity_id.write_to_be_bytes(&mut buf[2..]).is_ok());
+        assert!(entity_id.write_to_slice_be(&mut buf[2..]).is_ok());
         buf[0] = TlvType::EntityId as u8;
         buf[1] = 1;
         let tlv_from_raw = Tlv::from_bytes(&buf);
@@ -1704,7 +1704,7 @@ mod tests {
     fn test_tlv_to_owned() {
         let entity_id = UbfU8::new(5);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        assert!(entity_id.write_to_slice_be(&mut buf).is_ok());
         let tlv_res = Tlv::new(TlvType::EntityId, &buf[0..1]);
         assert!(tlv_res.is_ok());
         let tlv_res = tlv_res.unwrap();
@@ -1719,7 +1719,7 @@ mod tests {
     fn test_owned_tlv() {
         let entity_id = UbfU8::new(5);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        assert!(entity_id.write_to_slice_be(&mut buf).is_ok());
         let tlv_res = TlvOwned::new(TlvType::EntityId, &buf[0..1]);
         assert_eq!(
             tlv_res.tlv_type_field(),
@@ -1759,7 +1759,7 @@ mod tests {
     fn test_owned_tlv_conversion_to_bytes() {
         let entity_id = UbfU8::new(5);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        assert!(entity_id.write_to_slice_be(&mut buf).is_ok());
         let tlv_res = Tlv::new(TlvType::EntityId, &buf[0..1]);
         assert!(tlv_res.is_ok());
         let tlv_res = tlv_res.unwrap();
