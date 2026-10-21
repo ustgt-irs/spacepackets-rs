@@ -237,12 +237,12 @@ impl<'data> Tlv<'data> {
         };
         // We re-use this field so we do not need an additional struct field to store the raw start
         // of the TLV.
-        tlv.lv.raw_data = Some(buf);
+        tlv.lv.raw_data = Some(&buf[..MIN_TLV_LEN + tlv.lv.len_value()]);
         Ok(tlv)
     }
 
-    /// If the TLV was generated from a raw bytestream using [Self::from_bytes], the raw start
-    /// of the TLV can be retrieved with this method.
+    /// If the TLV was generated from a raw bytestream using [Self::from_bytes], the raw bytes
+    /// of the full TLV can be retrieved with this method.
     #[inline]
     pub fn raw_data(&self) -> Option<&'data [u8]> {
         self.lv.raw_data()
@@ -1207,7 +1207,7 @@ mod tests {
         assert!(tlv_from_raw.is_ok());
         let tlv_from_raw = tlv_from_raw.unwrap();
         assert!(tlv_from_raw.raw_data().is_some());
-        assert_eq!(tlv_from_raw.raw_data().unwrap(), buf);
+        assert_eq!(tlv_from_raw.raw_data().unwrap(), &buf[0..3]);
         assert_eq!(
             tlv_from_raw.tlv_type_field(),
             TlvTypeField::Standard(TlvType::EntityId)

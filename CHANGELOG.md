@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Fixed an off-by-one error in the CUC counter rollover modulus which caused the counter to skip
   0 when wrapping around.
+- `Lv::raw_data`, `Tlv::raw_data` and `MsgToUserTlv::raw_data` now only contain the bytes of the
+  parsed LV or TLV. Previously, they also contained any trailing bytes of the buffer passed to
+  `from_bytes`.
 
 # [v0.18.0] 2026-07-14
 

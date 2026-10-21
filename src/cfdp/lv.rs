@@ -25,8 +25,8 @@ pub const MIN_LV_LEN: usize = 1;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Lv<'data> {
     data: &'data [u8],
-    // If the LV was generated from a raw bytestream, this will contain the start of the
-    // full LV.
+    // If the LV was generated from a raw bytestream, this will contain the raw bytes of the
+    // full LV. TLVs re-use this field for the full TLV.
     pub(crate) raw_data: Option<&'data [u8]>,
 }
 
@@ -127,8 +127,8 @@ impl<'data> Lv<'data> {
         self.data
     }
 
-    /// If the LV was generated from a raw bytestream using [Self::from_bytes], the raw start
-    /// of the LV can be retrieved with this method.
+    /// If the LV was generated from a raw bytestream using [Self::from_bytes], the raw bytes
+    /// of the full LV can be retrieved with this method.
     #[inline]
     pub fn raw_data(&self) -> Option<&'data [u8]> {
         self.raw_data
@@ -183,7 +183,7 @@ impl<'data> Lv<'data> {
         generic_len_check_deserialization(buf, value_len + MIN_LV_LEN)?;
         Ok(Self {
             data: &buf[MIN_LV_LEN..MIN_LV_LEN + value_len],
-            raw_data: Some(buf),
+            raw_data: Some(&buf[0..MIN_LV_LEN + value_len]),
         })
     }
 }
@@ -272,7 +272,8 @@ mod tests {
         assert_eq!(lv.len_value(), 4);
         assert_eq!(lv.len_full(), 5);
         assert!(lv.raw_data().is_some());
-        assert_eq!(lv.raw_data().unwrap(), buf);
+        // Only includes the length indicated by the length field.
+        assert_eq!(lv.raw_data().unwrap(), &buf[0..5]);
         let val = lv.value();
         assert_eq!(val[0], 1);
         assert_eq!(val[1], 2);
@@ -370,5 +371,12 @@ mod tests {
         let buf: [u8; 4] = [3, 1, 2, 3];
         let raw_data = Lv::from_bytes(&buf).unwrap().raw_data();
         assert_eq!(raw_data, Some(&buf[..]));
+    }
+
+    #[test]
+    fn test_raw_data_excludes_trailing_bytes() {
+        let buf: [u8; 6] = [3, 1, 2, 3, 4, 5];
+        let lv = Lv::from_bytes(&buf).unwrap();
+        assert_eq!(lv.raw_data(), Some(&buf[0..4]));
     }
 }
