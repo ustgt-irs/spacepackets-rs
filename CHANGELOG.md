@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   `ProxyFlowLabelMessage`, `ProxySegmentationControlMessage` and `ProxyFilestoreResponseMessage`
   reserved CFDP messages. This completes the proxy operation messages.
 - `ReservedMessageReadError::InvalidFaultHandlerCode` variant.
+- `RemoteStatusReportRequestMessage`, `RemoteStatusReportResponseMessage`,
+  `RemoteSuspendRequestMessage`, `RemoteSuspendResponseMessage`, `RemoteResumeRequestMessage`
+  and `RemoteResumeResponseMessage` reserved CFDP messages.
 - `InvalidReservedMessageTypeError`, `ReservedMessageCreationError` and
   `ReservedMessageReadError` error types.
 - `TryFrom<&str>` implementation for `Lv`.
