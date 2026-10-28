@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.19.0] 2026-10-28
+
 ## Changed
 
 - `FilestoreRequestTlv::from_bytes` now checks that the buffer contains the full TLV and only
