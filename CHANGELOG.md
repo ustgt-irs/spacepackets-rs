@@ -12,8 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
-- `FilestoreRequestTlv::from_bytes` now checks that the buffer contains the full TLV and only
-  parses the value field. Previously it could read past the TLV length.
+- Bumped MSRV to 1.88. The `time` dependency of the `timelib` feature requires it.
 - `Lv::value` now returns a slice with the lifetime of the underlying data instead of the
   lifetime of the `Lv` itself.
 - Several getters now return data with the lifetime of the underlying buffer instead of the
@@ -52,7 +51,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `ProxyMessageToUserMessage`, `ProxyFilestoreRequestMessage`, `ProxyFaultHandlerOverrideMessage`,
   `ProxyFlowLabelMessage`, `ProxySegmentationControlMessage` and `ProxyFilestoreResponseMessage`
   reserved CFDP messages. This completes the proxy operation messages.
-- `ReservedMessageReadError::InvalidFaultHandlerCode` variant.
 - `RemoteStatusReportRequestMessage`, `RemoteStatusReportResponseMessage`,
   `RemoteSuspendRequestMessage`, `RemoteSuspendResponseMessage`, `RemoteResumeRequestMessage`
   and `RemoteResumeResponseMessage` reserved CFDP messages.
@@ -78,6 +76,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `Lv::raw_data`, `Tlv::raw_data` and `MsgToUserTlv::raw_data` now only contain the bytes of the
   parsed LV or TLV. Previously, they also contained any trailing bytes of the buffer passed to
   `from_bytes`.
+- `FilestoreRequestTlv::from_bytes` now checks that the buffer contains the full TLV and only
+  parses the value field. Previously it could read past the TLV length.
 
 # [v0.18.0] 2026-07-14
 
@@ -776,7 +776,8 @@ The timestamp of `PusTm` is now optional. See Added and Changed section for deta
 Initial release with CCSDS Space Packet Primary Header implementation and basic PUS TC and TM
 implementations.
 
-[unreleased]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.18.0...HEAD
+[unreleased]: https://github.com/ustgt-irs/spacepackets-rs/compare/v0.19.0...HEAD
+[v0.19.0]: https://github.com/ustgt-irs/spacepackets-rs/releases/tag/v0.19.0
 [v0.18.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.17.0...v0.18.0
 [v0.17.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.16.1...v0.17.0
 [v0.16.1]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.16.0...v0.16.1

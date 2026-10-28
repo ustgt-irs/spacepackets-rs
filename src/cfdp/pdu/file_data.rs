@@ -42,10 +42,10 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
         record_continuation_state: RecordContinuationState,
         metadata: Option<&'seg_meta [u8]>,
     ) -> Option<Self> {
-        if let Some(metadata) = metadata {
-            if metadata.len() > 2_usize.pow(6) - 1 {
-                return None;
-            }
+        if let Some(metadata) = metadata
+            && metadata.len() > 2_usize.pow(6) - 1
+        {
+            return None;
         }
         Some(Self {
             record_continuation_state,

@@ -656,7 +656,7 @@ mod tests {
         let finished_pdu_from_raw = FinishedPduReader::new(&buf).unwrap();
         assert_eq!(finished_pdu, finished_pdu_from_raw);
         buf[written - 1] -= 1;
-        let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
+        let crc: u16 = ((buf[written - 2] as u16) << 8) | buf[written - 1] as u16;
         let error = FinishedPduReader::new(&buf).unwrap_err();
         if let PduError::Checksum(e) = error {
             assert_eq!(e, crc);

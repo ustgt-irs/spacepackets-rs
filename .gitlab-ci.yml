@@ -23,9 +23,9 @@ test:
     - cargo test --doc
 
 msrv:
-  image: rust:1.85
+  image: rust:1.88
   script:
-    - cargo check --release
+    - cargo check --release --all-features
 
 cross-check:
   parallel:
