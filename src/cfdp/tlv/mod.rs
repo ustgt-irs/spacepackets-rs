@@ -666,6 +666,32 @@ impl FilestoreTlvBase<'_, '_> {
         }
         len
     }
+
+    /// Writes the first and the optional second name and returns the number of written bytes.
+    fn write_names_no_len_check(&self, buf: &mut [u8]) -> usize {
+        let mut current_idx = self
+            .first_name
+            .write_to_slice_no_len_check(&mut buf[..self.first_name.len_full()]);
+        if let Some(second_name) = self.second_name {
+            current_idx += second_name.write_to_slice_no_len_check(
+                &mut buf[current_idx..current_idx + second_name.len_full()],
+            );
+        }
+        current_idx
+    }
+}
+
+/// Reads the action code from the first byte of a filestore request or response value.
+fn read_filestore_action_code(value: &[u8]) -> Result<FilestoreActionCode, TlvLvError> {
+    let first_byte = *value
+        .first()
+        .ok_or(ByteConversionError::FromSliceTooSmall {
+            found: 0,
+            expected: 1,
+        })?;
+    let raw_action_code = (first_byte >> 4) & 0b1111;
+    FilestoreActionCode::try_from(raw_action_code)
+        .map_err(|_| TlvLvError::InvalidFilestoreActionCode(raw_action_code))
 }
 
 /// Filestore request TLV.
@@ -819,19 +845,29 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         }
         verify_tlv_type(buf[0], TlvType::FilestoreRequest)?;
         let len = buf[1] as usize;
-        let mut current_idx = 2;
-        let action_code = FilestoreActionCode::try_from((buf[2] >> 4) & 0b1111)
-            .map_err(|_| TlvLvError::InvalidFilestoreActionCode((buf[2] >> 4) & 0b1111))?;
-        current_idx += 1;
-        let first_name = Lv::from_bytes(&buf[current_idx..])?;
-        let mut second_name = None;
+        if buf.len() < 2 + len {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: buf.len(),
+                expected: 2 + len,
+            }
+            .into());
+        }
+        Self::from_value(&buf[2..2 + len])
+    }
 
-        current_idx += first_name.len_full();
+    /// Construct from the value field of a filestore request TLV.
+    pub(crate) fn from_value<'longest: 'first_name + 'second_name>(
+        value: &'longest [u8],
+    ) -> Result<Self, TlvLvError> {
+        let action_code = read_filestore_action_code(value)?;
+        let first_name = Lv::from_bytes(&value[1..])?;
+        let current_idx = 1 + first_name.len_full();
+        let mut second_name = None;
         if fs_request_has_second_filename(action_code) {
-            if current_idx >= 2 + len {
+            if current_idx >= value.len() {
                 return Err(TlvLvError::SecondNameMissing);
             }
-            second_name = Some(Lv::from_bytes(&buf[current_idx..])?);
+            second_name = Some(Lv::from_bytes(&value[current_idx..])?);
         }
         Ok(Self {
             base: FilestoreTlvBase {
@@ -852,20 +888,13 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         }
         buf[0] = TlvType::FilestoreRequest as u8;
         buf[1] = self.len_value() as u8;
-        buf[2] = (self.base.action_code as u8) << 4;
-        let mut current_idx = 3;
-        // Length checks were already performed.
-        self.base.first_name.write_to_slice_no_len_check(
-            &mut buf[current_idx..current_idx + self.base.first_name.len_full()],
-        );
-        current_idx += self.base.first_name.len_full();
-        if let Some(second_name) = self.base.second_name {
-            second_name.write_to_slice_no_len_check(
-                &mut buf[current_idx..current_idx + second_name.len_full()],
-            );
-            current_idx += second_name.len_full();
-        }
-        Ok(current_idx)
+        Ok(2 + self.write_value_no_len_check(&mut buf[2..]))
+    }
+
+    /// Writes the value field and returns the number of written bytes.
+    pub(crate) fn write_value_no_len_check(&self, buf: &mut [u8]) -> usize {
+        buf[0] = (self.base.action_code as u8) << 4;
+        1 + self.base.write_names_no_len_check(&mut buf[1..])
     }
 
     /// Length of the written TLV.
@@ -1027,37 +1056,34 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         }
         verify_tlv_type(buf[0], TlvType::FilestoreResponse)?;
         let len = buf[1] as usize;
-        let mut current_idx = 2;
-        let len_check = |current_idx: &mut usize, add_len: usize| -> Result<(), TlvLvError> {
-            if *current_idx + add_len > buf.len() {
-                return Err(ByteConversionError::FromSliceTooSmall {
-                    found: buf.len(),
-                    expected: *current_idx,
-                }
-                .into());
+        if buf.len() < 2 + len {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: buf.len(),
+                expected: 2 + len,
             }
-            Ok(())
-        };
-        len_check(&mut current_idx, len)?;
-        let action_code = FilestoreActionCode::try_from((buf[2] >> 4) & 0b1111)
-            .map_err(|_| TlvLvError::InvalidFilestoreActionCode((buf[2] >> 4) & 0b1111))?;
-        let status_code = buf[2] & 0b1111;
-        current_idx += 1;
-        let first_name = Lv::from_bytes(&buf[current_idx..])?;
-        len_check(&mut current_idx, first_name.len_full())?;
-        current_idx += first_name.len_full();
+            .into());
+        }
+        Self::from_value(&buf[2..2 + len])
+    }
 
+    /// Construct from the value field of a filestore response TLV.
+    pub(crate) fn from_value<'buf: 'first_name + 'second_name + 'fs_msg>(
+        value: &'buf [u8],
+    ) -> Result<Self, TlvLvError> {
+        let action_code = read_filestore_action_code(value)?;
+        let status_code = value[0] & 0b1111;
+        let first_name = Lv::from_bytes(&value[1..])?;
+        let mut current_idx = 1 + first_name.len_full();
         let mut second_name = None;
         if Self::has_second_filename(action_code) {
-            if current_idx >= 2 + len {
+            if current_idx >= value.len() {
                 return Err(TlvLvError::SecondNameMissing);
             }
-            let second_name_lv = Lv::from_bytes(&buf[current_idx..])?;
+            let second_name_lv = Lv::from_bytes(&value[current_idx..])?;
             current_idx += second_name_lv.len_full();
             second_name = Some(second_name_lv);
         }
-        let filestore_message = Lv::from_bytes(&buf[current_idx..])?;
-        len_check(&mut current_idx, filestore_message.len_full())?;
+        let filestore_message = Lv::from_bytes(&value[current_idx..])?;
         Ok(Self {
             base: FilestoreTlvBase {
                 action_code,
@@ -1079,22 +1105,17 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         }
         buf[0] = TlvType::FilestoreResponse as u8;
         buf[1] = self.len_value() as u8;
-        buf[2] = ((self.base.action_code as u8) << 4) | (self.status_code & 0b1111);
-        let mut current_idx = 3;
-        // Length checks were already performed.
-        self.base.first_name.write_to_slice_no_len_check(
-            &mut buf[current_idx..current_idx + self.base.first_name.len_full()],
-        );
-        current_idx += self.base.first_name.len_full();
-        if let Some(second_name) = self.base.second_name {
-            current_idx += second_name.write_to_slice_no_len_check(
-                &mut buf[current_idx..current_idx + second_name.len_full()],
-            );
-        }
+        Ok(2 + self.write_value_no_len_check(&mut buf[2..]))
+    }
+
+    /// Writes the value field and returns the number of written bytes.
+    pub(crate) fn write_value_no_len_check(&self, buf: &mut [u8]) -> usize {
+        buf[0] = ((self.base.action_code as u8) << 4) | (self.status_code & 0b1111);
+        let mut current_idx = 1 + self.base.write_names_no_len_check(&mut buf[1..]);
         current_idx += self.filestore_message.write_to_slice_no_len_check(
             &mut buf[current_idx..current_idx + self.filestore_message.len_full()],
         );
-        Ok(current_idx)
+        current_idx
     }
 
     /// Length of the written TLV.
