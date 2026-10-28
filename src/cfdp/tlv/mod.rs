@@ -18,6 +18,11 @@ use serde::{Deserialize, Serialize};
 use super::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError};
 
 pub mod msg_to_user;
+mod proxy;
+mod remote;
+
+pub use proxy::*;
+pub use remote::*;
 
 /// Minimum length of a type-length-value structure, including type and length fields.
 pub const MIN_TLV_LEN: usize = 2;
