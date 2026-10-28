@@ -328,7 +328,7 @@ mod tests {
         let eof_from_raw = EofPdu::from_bytes(&buf).expect("creating EOF PDU failed");
         assert_eq!(eof_from_raw, eof_pdu);
         buf[written - 1] -= 1;
-        let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
+        let crc: u16 = ((buf[written - 2] as u16) << 8) | buf[written - 1] as u16;
         let error = EofPdu::from_bytes(&buf).unwrap_err();
         if let PduError::Checksum(e) = error {
             assert_eq!(e, crc);
