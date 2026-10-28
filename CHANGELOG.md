@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
+- `FilestoreRequestTlv::from_bytes` now checks that the buffer contains the full TLV and only
+  parses the value field. Previously it could read past the TLV length.
 - `Lv::value` now returns a slice with the lifetime of the underlying data instead of the
   lifetime of the `Lv` itself.
 - Several getters now return data with the lifetime of the underlying buffer instead of the
@@ -45,6 +47,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `ProxyTransmissionModeMessage`, `ProxyClosureRequestMessage` and `ProxyPutCancelMessage`
   reserved CFDP messages.
 - `OriginatingTransactionIdMessage` reserved CFDP message.
+- `ProxyMessageToUserMessage`, `ProxyFilestoreRequestMessage`, `ProxyFaultHandlerOverrideMessage`,
+  `ProxyFlowLabelMessage`, `ProxySegmentationControlMessage` and `ProxyFilestoreResponseMessage`
+  reserved CFDP messages. This completes the proxy operation messages.
+- `ReservedMessageReadError::InvalidFaultHandlerCode` variant.
 - `InvalidReservedMessageTypeError`, `ReservedMessageCreationError` and
   `ReservedMessageReadError` error types.
 - `TryFrom<&str>` implementation for `Lv`.
