@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `RemoteStatusReportRequestMessage`, `RemoteStatusReportResponseMessage`,
   `RemoteSuspendRequestMessage`, `RemoteSuspendResponseMessage`, `RemoteResumeRequestMessage`
   and `RemoteResumeResponseMessage` reserved CFDP messages.
+- The proxy and remote reserved CFDP messages are also re-exported in `cfdp::tlv`.
 - `InvalidReservedMessageTypeError`, `ReservedMessageCreationError` and
   `ReservedMessageReadError` error types.
 - `TryFrom<&str>` implementation for `Lv`.
