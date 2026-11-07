@@ -1,5 +1,5 @@
 //! Module to generate or read CCSDS Unsegmented (CUC) timestamps as specified in
-//! [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.2 .
+//! [CCSDS 301.0-B-4](https://ccsds.org/publications/bluebooks/entry/3147/) section 3.2 .
 //!
 //! The core data structure to do this is the [CucTime] struct which provides a CUC time object
 //! using the CCSDS Epoch.
