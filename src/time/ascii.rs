@@ -1,5 +1,5 @@
 //! Module to generate the ASCII timecodes specified in
-//! [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.5 .
+//! [CCSDS 301.0-B-4](https://ccsds.org/publications/bluebooks/entry/3147/) section 3.5 .
 //! See [chrono::DateTime::format] for a usage example of the generated
 //! [chrono::format::DelayedFormat] structs.
 #[cfg(all(feature = "alloc", feature = "chrono"))]

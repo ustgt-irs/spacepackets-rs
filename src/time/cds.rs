@@ -1,5 +1,5 @@
 //! Module to generate or read CCSDS Day Segmented (CDS) timestamps as specified in
-//! [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.3 .
+//! [CCSDS 301.0-B-4](https://ccsds.org/publications/bluebooks/entry/3147/) section 3.3 .
 //!
 //! The core data structure to do this is the [CdsTime] struct and the
 //! [get_dyn_time_provider_from_bytes] function to retrieve correct instances of the

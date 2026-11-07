@@ -6,17 +6,17 @@
 //! Currently, this includes the following components:
 //!
 //!  - Space Packet implementation according to
-//!    [CCSDS Blue Book 133.0-B-2](https://public.ccsds.org/Pubs/133x0b2e1.pdf)
+//!    [CCSDS Blue Book 133.0-B-2](https://ccsds.org/publications/bluebooks/entry/3264/)
 //!  - CCSDS File Delivery Protocol (CFDP) packet implementations according to
-//!    [CCSDS Blue Book 727.0-B-5](https://public.ccsds.org/Pubs/727x0b5.pdf)
+//!    [CCSDS Blue Book 727.0-B-5](https://ccsds.org/publications/bluebooks/entry/3151/)
 //!  - PUS Telecommand and PUS Telemetry implementation according to the
 //!    [ECSS-E-ST-70-41C standard](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 //!  - CUC (CCSDS Unsegmented Time Code) implementation according to
-//!    [CCSDS 301.0-B-4 3.2](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
+//!    [CCSDS 301.0-B-4 3.2](https://ccsds.org/publications/bluebooks/entry/3147/)
 //!  - CDS (CCSDS Day Segmented Time Code) implementation according to
-//!    [CCSDS 301.0-B-4 3.3](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
+//!    [CCSDS 301.0-B-4 3.3](https://ccsds.org/publications/bluebooks/entry/3147/)
 //!  - Some helper types to support ASCII timecodes as specified in
-//!    [CCSDS 301.0-B-4 3.5](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
+//!    [CCSDS 301.0-B-4 3.5](https://ccsds.org/publications/bluebooks/entry/3147/)
 //!
 //! ## Features
 //!
@@ -44,7 +44,7 @@
 //! ## Module
 //!
 //! This module contains helpers and data structures to generate Space Packets according to the
-//! [CCSDS 133.0-B-2](https://public.ccsds.org/Pubs/133x0b2e1.pdf). This includes the
+//! [CCSDS 133.0-B-2](https://ccsds.org/publications/bluebooks/entry/3264/). This includes the
 //! [SpHeader] class to generate the Space Packet Header component common to all space packets.
 //!
 //! ## Example
